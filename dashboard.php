@@ -1,346 +1,666 @@
 <?php
-/**
- * MyWorkHub - Dashboard Page (dashboard.php)
- *
- * Displays an overview of work periods, tasks, and progress.
- * Allows users to manage their work.
- *
- * @author Dr. Ahmed AL-sadi
- * @version 2.0 (Functional with API integration)
- */
+// Start session for user authentication
+session_start();
 
-// Define ROOT_PATH for consistent includes. Assumes dashboard.php is in the 'workhub' directory.
-if (!defined('ROOT_PATH')) {
-    define('ROOT_PATH', __DIR__);
-}
+// Check if user is logged in - redirect to login page if not
+// if (!isset($_SESSION['user_id'])) {
+//     header('Location: login.php');
+//     exit;
+// }
 
-// Include necessary files
-require_once ROOT_PATH . '/includes/config.php';
-require_once ROOT_PATH . '/auth/session.php';   // Handles session initialization, isLoggedIn(), getCurrentUserId(), etc.
-                                                // session.php should include functions.php which includes db.php
-
-// Check if the user is logged in
-if (!isLoggedIn()) {
-    redirect('login.php', ['type' => 'error', 'message' => 'Please log in to view the dashboard.']);
-    exit;
-}
-
-// Get current user's information for display (optional, if needed for personalization)
-$currentUserId = getCurrentUserId();
-$username = $_SESSION['username'] ?? 'User'; // Get username from session
-
-$pageTitle = "Dashboard - " . SITE_NAME;
-
+// Include configuration
+require_once 'config.php';
 ?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title><?php echo htmlspecialchars($pageTitle); ?></title>
-    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css">
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <title>MyWorkHub Dashboard</title>
+    
+    <!-- CSS Libraries -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+    
     <style>
-        .period-card {
-            transition: all 0.3s ease;
+        :root {
+            --primary-color: #3498db;
+            --secondary-color: #2c3e50;
+            --accent-color: #e74c3c;
+            --light-bg: #f8f9fa;
+            --dark-bg: #343a40;
+            --success-color: #2ecc71;
+            --warning-color: #f39c12;
+            --info-color: #3498db;
+            --danger-color: #e74c3c;
         }
-        .period-card:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 10px 20px rgba(0,0,0,0.1);
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--light-bg);
+            color: #333;
+            padding-top: 56px; /* For fixed navbar */
         }
-        .task-row:hover {
-            background-color: #f9fafb; /* Slightly lighter gray for hover */
+        
+        .navbar {
+            background-color: var(--secondary-color);
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         }
-        .progress-container {
-            height: 8px;
-            background-color: #e2e8f0; /* coolGray-200 */
-            border-radius: 4px;
-            overflow: hidden; /* Ensures progress bar stays within rounded corners */
+        
+        .navbar-brand {
+            font-weight: 700;
+            color: white;
         }
-        .progress-bar {
-            height: 8px;
-            border-radius: 4px; /* Should match container if you want smooth ends */
-            transition: width 0.5s ease-in-out;
-        }
-        .modal {
-            transition: opacity 0.3s ease;
-        }
-        .modal-content {
-            max-height: 90vh;
+        
+        .sidebar {
+            position: fixed;
+            top: 56px;
+            bottom: 0;
+            left: 0;
+            z-index: 100;
+            padding: 20px 0;
+            overflow-x: hidden;
             overflow-y: auto;
+            background-color: var(--dark-bg);
+            width: 250px;
+            transition: all 0.3s;
         }
-        /* Custom spinner for buttons */
-        .spinner-button {
-            border: 2px solid rgba(255, 255, 255, 0.3);
-            border-top-color: #ffffff;
+        
+        .sidebar.collapsed {
+            width: 60px;
+        }
+        
+        .sidebar .nav-link {
+            color: rgba(255,255,255,0.75);
+            padding: 10px 20px;
+            margin: 5px 15px;
+            border-radius: 5px;
+            display: flex;
+            align-items: center;
+        }
+        
+        .sidebar .nav-link:hover {
+            color: rgba(255,255,255,0.95);
+            background-color: rgba(255,255,255,0.1);
+        }
+        
+        .sidebar .nav-link.active {
+            color: white;
+            background-color: var(--primary-color);
+        }
+        
+        .sidebar .nav-link i {
+            margin-right: 10px;
+            width: 20px;
+            text-align: center;
+        }
+        
+        .sidebar.collapsed .nav-link span {
+            display: none;
+        }
+        
+        .main-content {
+            margin-left: 250px;
+            padding: 20px;
+            transition: margin 0.3s;
+        }
+        
+        .main-content.expanded {
+            margin-left: 60px;
+        }
+        
+        .card {
+            border: none;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+            transition: transform 0.3s, box-shadow 0.3s;
+        }
+        
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 6px 12px rgba(0,0,0,0.15);
+        }
+        
+        .card-header {
+            background-color: white;
+            border-bottom: 1px solid rgba(0,0,0,0.1);
+            font-weight: 600;
+            border-radius: 10px 10px 0 0 !important;
+        }
+        
+        .btn-primary {
+            background-color: var(--primary-color);
+            border-color: var(--primary-color);
+        }
+        
+        .btn-primary:hover {
+            background-color: #2980b9;
+            border-color: #2980b9;
+        }
+        
+        .status-badge {
+            padding: 5px 10px;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 600;
+        }
+        
+        /* Status colors for periods */
+        .status-active {
+            background-color: #2ecc71;
+            color: white;
+        }
+        
+        .status-completed {
+            background-color: #34495e;
+            color: white;
+        }
+        
+        .status-planned {
+            background-color: #3498db;
+            color: white;
+        }
+        
+        .status-archived {
+            background-color: #95a5a6;
+            color: white;
+        }
+        
+        /* Status colors for tasks */
+        .status-to-do {
+            background-color: #3498db;
+            color: white;
+        }
+        
+        .status-in-progress {
+            background-color: #f39c12;
+            color: white;
+        }
+        
+        .status-completed-task {
+            background-color: #2ecc71;
+            color: white;
+        }
+        
+        .status-on-hold {
+            background-color: #95a5a6;
+            color: white;
+        }
+        
+        .status-cancelled {
+            background-color: #e74c3c;
+            color: white;
+        }
+        
+        /* Priority colors */
+        .priority-low {
+            border-left: 4px solid #3498db;
+        }
+        
+        .priority-medium {
+            border-left: 4px solid #f39c12;
+        }
+        
+        .priority-high {
+            border-left: 4px solid #e74c3c;
+        }
+        
+        .priority-critical {
+            border-left: 4px solid #c0392b;
+        }
+        
+        /* Progress bar styling */
+        .progress {
+            height: 10px;
+            border-radius: 5px;
+            margin-top: 5px;
+            background-color: rgba(0,0,0,0.05);
+        }
+        
+        .progress-bar {
+            background-color: var(--primary-color);
+        }
+        
+        /* Custom styling for period cards */
+        .period-card {
+            border-radius: 10px;
+            margin-bottom: 20px;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .period-header {
+            padding: 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .period-header h3 {
+            margin: 0;
+            font-size: 1.25rem;
+            font-weight: 600;
+        }
+        
+        .period-details {
+            padding: 0 15px 15px;
+        }
+        
+        .period-dates {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.9rem;
+            margin-top: 10px;
+            color: #666;
+        }
+        
+        .period-status {
+            margin-top: 10px;
+            font-weight: 500;
+        }
+        
+        .period-footer {
+            padding: 10px 15px;
+            background-color: rgba(0,0,0,0.03);
+            text-align: right;
+        }
+        
+        .period-actions {
+            display: flex;
+            gap: 10px;
+        }
+        
+        /* Custom styling for task cards */
+        .task-card {
+            padding: 15px;
+            border-left-width: 4px;
+            margin-bottom: 10px;
+            position: relative;
+        }
+        
+        .task-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+        }
+        
+        .task-title {
+            font-weight: 600;
+            font-size: 1.1rem;
+            margin: 0;
+            padding-right: 50px;
+        }
+        
+        .task-metadata {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-top: 8px;
+            font-size: 0.85rem;
+            color: #666;
+        }
+        
+        .task-actions {
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            display: flex;
+            gap: 5px;
+        }
+        
+        .task-description {
+            margin-top: 10px;
+            font-size: 0.9rem;
+        }
+        
+        .subtask-list {
+            margin-top: 15px;
+        }
+        
+        .subtask-item {
+            padding: 10px 0;
+            border-top: 1px solid rgba(0,0,0,0.05);
+            display: flex;
+            align-items: center;
+        }
+        
+        .subtask-checkbox {
+            margin-right: 10px;
+        }
+        
+        .subtask-title {
+            font-size: 0.9rem;
+        }
+        
+        /* Loading indicators */
+        .loading-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 50px 0;
+            text-align: center;
+        }
+        
+        .loading-spinner {
+            border: 4px solid rgba(0, 0, 0, 0.1);
+            border-left-color: var(--primary-color);
             border-radius: 50%;
-            width: 1rem; /* 16px */
-            height: 1rem; /* 16px */
+            width: 40px;
+            height: 40px;
             animation: spin 1s linear infinite;
-            display: inline-block;
-            margin-right: 0.5rem; /* 8px */
+            margin-bottom: 15px;
         }
+        
         @keyframes spin {
-            to { transform: rotate(360deg); }
-        }
-        .no-print { /* Class to hide elements during printing */
-             display: revert; /* Default display */
-        }
-        @media print {
-            body * {
-                visibility: hidden;
+            to {
+                transform: rotate(360deg);
             }
-            .printable-area, .printable-area * {
-                visibility: visible;
-            }
-            .printable-area {
-                position: absolute;
-                left: 0;
-                top: 0;
+        }
+        
+        .error-container {
+            padding: 30px;
+            text-align: center;
+            background-color: rgba(231, 76, 60, 0.1);
+            border-radius: 10px;
+            margin: 20px 0;
+        }
+        
+        /* Modal customizations */
+        .modal-header {
+            background-color: var(--secondary-color);
+            color: white;
+            border-radius: 0.3rem 0.3rem 0 0;
+        }
+        
+        .modal-content {
+            border: none;
+            border-radius: 0.5rem;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+        }
+        
+        /* Form customizations */
+        .form-label {
+            font-weight: 500;
+        }
+        
+        .form-control:focus {
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 0.25rem rgba(52, 152, 219, 0.25);
+        }
+        
+        /* Color picker */
+        .color-picker {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 5px;
+            margin-top: 5px;
+        }
+        
+        .color-option {
+            width: 25px;
+            height: 25px;
+            border-radius: 50%;
+            cursor: pointer;
+            border: 2px solid transparent;
+        }
+        
+        .color-option.selected {
+            border-color: #333;
+        }
+        
+        /* Dashboard welcome state */
+        .welcome-container {
+            text-align: center;
+            padding: 50px 20px;
+            background-color: white;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        
+        /* Delete confirmation overlay */
+        .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: rgba(0, 0, 0, 0.5);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+            color: white;
+        }
+        
+        /* Responsive adjustments */
+        @media (max-width: 768px) {
+            .sidebar {
                 width: 100%;
+                position: static;
+                height: auto;
+                padding-bottom: 0;
             }
-            .no-print {
-                display: none !important;
+            
+            .main-content {
+                margin-left: 0;
             }
-            .page-break {
-                page-break-before: always;
-            }
-            header, footer, nav, aside { /* Common elements to hide */
-                display: none !important;
+            
+            .sidebar.collapsed {
+                display: none;
             }
         }
     </style>
 </head>
-<body class="bg-gray-100 min-h-screen">
-    <header class="bg-white shadow-md no-print">
-        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div class="flex items-center justify-between h-16">
-                <div class="flex items-center">
-                    <a href="dashboard.php" class="flex-shrink-0">
-                        <i class="fas fa-tasks text-3xl text-indigo-600"></i>
-                        <span class="ml-2 text-2xl font-bold text-indigo-600"><?php echo htmlspecialchars(SITE_NAME); ?></span>
-                    </a>
+<body>
+    <!-- Navbar -->
+    <nav class="navbar navbar-expand-lg navbar-dark fixed-top">
+        <div class="container-fluid">
+            <button class="btn btn-link text-light me-3" id="sidebar-toggle">
+                <i class="fas fa-bars"></i>
+            </button>
+            <a class="navbar-brand" href="#">MyWorkHub</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">
+                            <i class="fas fa-user-circle me-1"></i>
+                            <span id="current-username">User</span>
+                        </a>
+                        <ul class="dropdown-menu dropdown-menu-end">
+                            <li><a class="dropdown-item" href="#"><i class="fas fa-user me-2"></i>Profile</a></li>
+                            <li><a class="dropdown-item" href="#"><i class="fas fa-cog me-2"></i>Settings</a></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li><a class="dropdown-item" href="logout.php"><i class="fas fa-sign-out-alt me-2"></i>Logout</a></li>
+                        </ul>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Sidebar -->
+    <div class="sidebar" id="sidebar">
+        <ul class="nav flex-column">
+            <li class="nav-item">
+                <a class="nav-link active" href="#dashboard-section" data-section="dashboard-section">
+                    <i class="fas fa-th-large"></i>
+                    <span>Dashboard</span>
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" href="#periods-section" data-section="periods-section">
+                    <i class="far fa-calendar-alt"></i>
+                    <span>Periods</span>
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" href="#tasks-section" data-section="tasks-section">
+                    <i class="fas fa-tasks"></i>
+                    <span>Tasks</span>
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" href="#reports-section" data-section="reports-section">
+                    <i class="fas fa-chart-bar"></i>
+                    <span>Reports</span>
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" href="#settings-section" data-section="settings-section">
+                    <i class="fas fa-cog"></i>
+                    <span>Settings</span>
+                </a>
+            </li>
+        </ul>
+    </div>
+
+    <!-- Main Content -->
+    <div class="main-content" id="main-content">
+        <!-- Dashboard Section -->
+        <div id="dashboard-section" class="content-section active">
+            <h1 class="mb-4">Dashboard</h1>
+            
+            <div class="row">
+                <div class="col-md-3">
+                    <div class="card">
+                        <div class="card-body">
+                            <h5 class="card-title">Active Periods</h5>
+                            <h2 id="active-periods-count">-</h2>
+                        </div>
+                    </div>
                 </div>
-                <div class="flex items-center space-x-4">
-                    <span class="text-gray-600 hidden sm:block"><i class="fas fa-user-circle mr-2 text-indigo-600"></i>Welcome, <?php echo htmlspecialchars($username); ?>!</span>
-                    <a href="profile.php" class="text-gray-600 hover:text-indigo-600 px-3 py-2 rounded-md text-sm font-medium" title="My Profile">
-                        <i class="fas fa-cog"></i> <span class="hidden sm:inline">Profile</span>
-                    </a>
-                    <button id="logout-btn" class="bg-red-500 hover:bg-red-600 text-white px-3 py-2 rounded-md text-sm font-medium flex items-center">
-                        <i class="fas fa-sign-out-alt mr-1"></i> Logout
-                    </button>
+                <div class="col-md-3">
+                    <div class="card">
+                        <div class="card-body">
+                            <h5 class="card-title">Open Tasks</h5>
+                            <h2 id="open-tasks-count">-</h2>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card">
+                        <div class="card-body">
+                            <h5 class="card-title">Completed Tasks</h5>
+                            <h2 id="completed-tasks-count">-</h2>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card">
+                        <div class="card-body">
+                            <h5 class="card-title">Upcoming Deadlines</h5>
+                            <h2 id="upcoming-deadlines-count">-</h2>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="row mt-4">
+                <div class="col-md-6">
+                    <div class="card">
+                        <div class="card-header d-flex justify-content-between align-items-center">
+                            <span>Recent Periods</span>
+                            <a href="#periods-section" class="btn btn-sm btn-outline-primary view-all-link" data-section="periods-section">View All</a>
+                        </div>
+                        <div class="card-body">
+                            <div id="recent-periods-container">
+                                <div class="loading-container">
+                                    <div class="loading-spinner"></div>
+                                    <p>Loading periods...</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="card">
+                        <div class="card-header d-flex justify-content-between align-items-center">
+                            <span>Task Progress</span>
+                            <a href="#tasks-section" class="btn btn-sm btn-outline-primary view-all-link" data-section="tasks-section">View All</a>
+                        </div>
+                        <div class="card-body">
+                            <div id="tasks-progress-container">
+                                <div class="loading-container">
+                                    <div class="loading-spinner"></div>
+                                    <p>Loading task progress...</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="row mt-4">
+                <div class="col-12">
+                    <div class="card">
+                        <div class="card-header d-flex justify-content-between align-items-center">
+                            <span>Upcoming Deadlines</span>
+                            <button class="btn btn-sm btn-outline-primary" id="refresh-deadlines-btn">
+                                <i class="fas fa-sync-alt"></i> Refresh
+                            </button>
+                        </div>
+                        <div class="card-body">
+                            <div id="upcoming-deadlines-container">
+                                <div class="loading-container">
+                                    <div class="loading-spinner"></div>
+                                    <p>Loading deadlines...</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
-    </header>
-
-    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 printable-area">
-        <div id="global-alert" class="mb-4 p-4 rounded-md text-sm hidden no-print"></div>
-
-        <section id="dashboard-summary" class="mb-10">
-            <div class="flex justify-between items-center mb-6">
-                <h2 class="text-2xl font-semibold text-gray-800">Dashboard Overview</h2>
-                <p class="text-sm text-gray-500 no-print">Last updated: <span id="last-updated-time"><?php echo date("M j, Y g:i A"); ?></span></p>
-            </div>
-            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                <div class="bg-white rounded-lg shadow-lg p-6 flex items-center">
-                    <div class="rounded-full bg-blue-100 p-4 mr-4"> <i class="fas fa-calendar-alt text-blue-600 text-2xl"></i> </div>
-                    <div> <p class="text-sm text-gray-500">Active Periods</p> <p id="summary-active-periods" class="text-3xl font-bold text-gray-800">0</p> </div>
-                </div>
-                <div class="bg-white rounded-lg shadow-lg p-6 flex items-center">
-                    <div class="rounded-full bg-green-100 p-4 mr-4"> <i class="fas fa-tasks text-green-600 text-2xl"></i> </div>
-                    <div> <p class="text-sm text-gray-500">Total Major Tasks</p> <p id="summary-major-tasks" class="text-3xl font-bold text-gray-800">0</p> </div>
-                </div>
-                <div class="bg-white rounded-lg shadow-lg p-6 flex items-center">
-                    <div class="rounded-full bg-yellow-100 p-4 mr-4"> <i class="fas fa-list-ul text-yellow-600 text-2xl"></i> </div>
-                    <div> <p class="text-sm text-gray-500">Total Subtasks</p> <p id="summary-subtasks" class="text-3xl font-bold text-gray-800">0</p> </div>
-                </div>
-                <div class="bg-white rounded-lg shadow-lg p-6 flex items-center">
-                    <div class="rounded-full bg-purple-100 p-4 mr-4"> <i class="fas fa-check-circle text-purple-600 text-2xl"></i> </div>
-                    <div> <p class="text-sm text-gray-500">Overall Completion</p> <p id="summary-overall-completion" class="text-3xl font-bold text-gray-800">0%</p> </div>
-                </div>
-            </div>
-        </section>
         
-        <section class="mb-10 bg-white rounded-lg shadow-lg p-6">
-            <h2 class="text-xl font-semibold text-gray-800 mb-4">Task Progress Overview (by Period)</h2>
-            <div class="w-full h-72 md:h-96">
-                <canvas id="progressChart"></canvas>
-            </div>
-        </section>
-
-        <section id="periods-section" class="mb-10">
-            <div class="flex justify-between items-center mb-6">
-                <h2 class="text-2xl font-semibold text-gray-800">Work Periods</h2>
-                <button id="add-period-btn" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-md text-sm font-medium flex items-center no-print">
-                    <i class="fas fa-plus mr-2"></i> Add Period
+        <!-- Periods Section -->
+        <div id="periods-section" class="content-section">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h1>Periods</h1>
+                <button class="btn btn-primary" id="add-period-btn">
+                    <i class="fas fa-plus me-2"></i>Add Period
                 </button>
             </div>
-            <div id="periods-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                <p id="no-periods-message" class="text-gray-500 col-span-full hidden">No work periods found. Get started by adding one!</p>
-            </div>
-        </section>
-
-        <section id="major-tasks-section" class="mb-10">
-            <div class="flex flex-wrap justify-between items-center mb-6 gap-4">
-                <h2 class="text-2xl font-semibold text-gray-800">Major Tasks</h2>
-                <div class="flex items-center space-x-2 no-print">
-                    <select id="period-filter" class="border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-indigo-500 focus:border-indigo-500">
-                        <option value="all">All Periods</option>
-                        </select>
-                    <button id="add-task-btn" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-md text-sm font-medium flex items-center">
-                        <i class="fas fa-plus mr-2"></i> Add Task
-                    </button>
+            
+            <div class="row" id="periods-container">
+                <div class="col-12">
+                    <div class="loading-container">
+                        <div class="loading-spinner"></div>
+                        <p>Loading periods...</p>
+                    </div>
                 </div>
             </div>
-            <div class="bg-white shadow-lg rounded-lg overflow-x-auto">
-                <table class="min-w-full divide-y divide-gray-200">
-                    <thead class="bg-gray-50">
-                        <tr>
-                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Task Name</th>
-                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Period</th>
-                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Priority</th>
-                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Deadline</th>
-                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Progress</th>
-                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider no-print">Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody id="major-tasks-tbody" class="bg-white divide-y divide-gray-200">
-                        <tr id="no-major-tasks-row" class="hidden"><td colspan="7" class="text-center py-4 text-gray-500">No major tasks found for the selected period.</td></tr>
-                    </tbody>
-                </table>
-            </div>
-        </section>
-
-        <section id="subtasks-display-section" class="mb-10 hidden">
-            <div class="flex justify-between items-center mb-6">
-                <h2 class="text-2xl font-semibold text-gray-800">Subtasks for: <span id="current-major-task-name" class="text-indigo-600"></span></h2>
-                <div class="space-x-2 no-print">
-                     <button id="add-subtask-btn" data-major-task-id="" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-md text-sm font-medium flex items-center">
-                        <i class="fas fa-plus mr-2"></i> Add Subtask
-                    </button>
-                    <button id="hide-subtasks-btn" class="bg-gray-200 hover:bg-gray-300 text-gray-700 px-4 py-2 rounded-md text-sm font-medium">
-                        <i class="fas fa-chevron-up mr-2"></i> Hide Subtasks
-                    </button>
-                </div>
-            </div>
-            <div class="bg-white shadow-lg rounded-lg overflow-x-auto">
-                <table class="min-w-full divide-y divide-gray-200">
-                    <thead class="bg-gray-50">
-                        <tr>
-                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Subtask Name</th>
-                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Priority</th>
-                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Deadline</th>
-                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Progress</th>
-                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider no-print">Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody id="subtasks-tbody" class="bg-white divide-y divide-gray-200">
-                        <tr id="no-subtasks-row" class="hidden"><td colspan="6" class="text-center py-4 text-gray-500">No subtasks found for this major task.</td></tr>
-                    </tbody>
-                </table>
-            </div>
-        </section>
-    </main>
-
-    <footer class="bg-white border-t border-gray-200 mt-12 py-6 no-print">
-        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-            <p class="text-sm text-gray-500">&copy; <?php echo date('Y'); ?> <?php echo htmlspecialchars(SITE_NAME); ?>. Created by Dr. Ahmed AL-sadi. All rights reserved.</p>
         </div>
-    </footer>
-
-    <div id="period-modal" class="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 hidden p-4 no-print">
-        <div class="bg-white rounded-lg shadow-xl max-w-md w-full modal-content">
-            <div class="bg-gray-100 py-3 px-4 rounded-t-lg flex justify-between items-center">
-                <h3 id="period-modal-title" class="text-lg font-semibold text-gray-800">Add New Period</h3>
-                <button class="close-modal-btn text-gray-500 hover:text-gray-700 text-2xl">&times;</button>
+        
+        <!-- Tasks Section -->
+        <div id="tasks-section" class="content-section">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h1>Tasks</h1>
+                <button class="btn btn-primary" id="add-task-btn">
+                    <i class="fas fa-plus me-2"></i>Add Task
+                </button>
             </div>
-            <div class="p-6">
-                <form id="period-form" class="space-y-4">
-                    <input type="hidden" id="period-id" name="id">
-                    <div>
-                        <label for="period-name" class="block text-sm font-medium text-gray-700">Period Name <span class="text-red-500">*</span></label>
-                        <input type="text" id="period-name" name="name" required class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
-                    </div>
-                    <div>
-                        <label for="period-description" class="block text-sm font-medium text-gray-700">Description</label>
-                        <textarea id="period-description" name="description" rows="3" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"></textarea>
-                    </div>
-                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <div>
-                            <label for="period-start-date" class="block text-sm font-medium text-gray-700">Start Date</label>
-                            <input type="date" id="period-start-date" name="start_date" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
-                        </div>
-                        <div>
-                            <label for="period-end-date" class="block text-sm font-medium text-gray-700">End Date</label>
-                            <input type="date" id="period-end-date" name="end_date" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
-                        </div>
-                    </div>
-                     <div>
-                        <label for="period-status" class="block text-sm font-medium text-gray-700">Status</label>
-                        <select id="period-status" name="status" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
-                            <option value="active">Active</option>
-                            <option value="planned">Planned</option>
-                            <option value="completed">Completed</option>
-                            <option value="archived">Archived</option>
-                        </select>
-                    </div>
-                    <div class="flex justify-end pt-4 space-x-3">
-                        <button type="button" class="close-modal-btn bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-md py-2 px-4 text-sm font-medium">Cancel</button>
-                        <button type="submit" id="save-period-btn" class="bg-indigo-600 hover:bg-indigo-700 text-white rounded-md py-2 px-4 text-sm font-medium flex items-center justify-center">
-                            <span class="spinner-button hidden"></span> Save Period
-                        </button>
-                    </div>
-                </form>
-            </div>
-        </div>
-    </div>
-
-    <div id="task-modal" class="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 hidden p-4 no-print">
-        <div class="bg-white rounded-lg shadow-xl max-w-lg w-full modal-content">
-            <div class="bg-gray-100 py-3 px-4 rounded-t-lg flex justify-between items-center">
-                <h3 id="task-modal-title" class="text-lg font-semibold text-gray-800">Add New Major Task</h3>
-                <button class="close-modal-btn text-gray-500 hover:text-gray-700 text-2xl">&times;</button>
-            </div>
-            <div class="p-6">
-                <form id="task-form" class="space-y-4">
-                    <input type="hidden" id="task-id" name="id">
-                    <div>
-                        <label for="task-name" class="block text-sm font-medium text-gray-700">Task Name <span class="text-red-500">*</span></label>
-                        <input type="text" id="task-name" name="task_name" required class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
-                    </div>
-                    <div>
-                        <label for="task-description" class="block text-sm font-medium text-gray-700">Description</label>
-                        <textarea id="task-description" name="description" rows="3" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"></textarea>
-                    </div>
-                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <div>
-                            <label for="task-period-id" class="block text-sm font-medium text-gray-700">Period</label>
-                            <select id="task-period-id" name="period_id" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
-                                <option value="">Select Period</option>
-                                </select>
-                        </div>
-                        <div>
-                            <label for="task-deadline" class="block text-sm font-medium text-gray-700">Deadline</label>
-                            <input type="date" id="task-deadline" name="deadline" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
-                        </div>
-                    </div>
-                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <div>
-                            <label for="task-priority" class="block text-sm font-medium text-gray-700">Priority</label>
-                            <select id="task-priority" name="priority" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
-                                <option value="Low">Low</option>
-                                <option value="Medium" selected>Medium</option>
-                                <option value="High">High</option>
-                                <option value="Critical">Critical</option>
+            
+            <div class="card mb-3">
+                <div class="card-body">
+                    <div class="row g-3">
+                        <div class="col-md-4">
+                            <label for="filter-period" class="form-label">Period</label>
+                            <select class="form-select" id="filter-period">
+                                <option value="">All Periods</option>
+                                <!-- Periods will be loaded here -->
                             </select>
                         </div>
-                        <div>
-                            <label for="task-status" class="block text-sm font-medium text-gray-700">Status</label>
-                            <select id="task-status" name="status" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
+                        <div class="col-md-3">
+                            <label for="filter-status" class="form-label">Status</label>
+                            <select class="form-select" id="filter-status">
+                                <option value="">All Statuses</option>
                                 <option value="To Do">To Do</option>
                                 <option value="In Progress">In Progress</option>
                                 <option value="Completed">Completed</option>
@@ -348,815 +668,1387 @@ $pageTitle = "Dashboard - " . SITE_NAME;
                                 <option value="Cancelled">Cancelled</option>
                             </select>
                         </div>
-                    </div>
-                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <div>
-                            <label for="task-urgency" class="block text-sm font-medium text-gray-700">Urgency</label>
-                            <select id="task-urgency" name="urgency" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
-                                <option value="Flexible">Flexible</option>
-                                <option value="Soon" selected>Soon</option>
-                                <option value="Immediate">Immediate</option>
-                                <option value="Daily">Daily</option>
-                                <option value="Weekly">Weekly</option>
-                                <option value="Periodic">Periodic</option>
-                            </select>
-                        </div>
-                        <div>
-                            <label for="task-importance" class="block text-sm font-medium text-gray-700">Importance</label>
-                            <select id="task-importance" name="importance" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
-                                <option value="Routine">Routine</option>
-                                <option value="Important" selected>Important</option>
-                                <option value="Critical">Critical</option>
-                            </select>
-                        </div>
-                    </div>
-                    <div>
-                        <label for="task-working-with" class="block text-sm font-medium text-gray-700">Working With</label>
-                        <input type="text" id="task-working-with" name="working_with" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
-                    </div>
-                    <div>
-                        <label for="task-percent-complete" class="block text-sm font-medium text-gray-700">% Complete</label>
-                        <div class="flex items-center mt-1">
-                            <input type="range" id="task-percent-complete" name="percent_complete" min="0" max="100" value="0" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
-                            <span id="task-percent-value" class="ml-3 text-sm text-gray-600 w-10 text-right">0%</span>
-                        </div>
-                    </div>
-                    <div>
-                        <label for="task-notes" class="block text-sm font-medium text-gray-700">Notes</label>
-                        <textarea id="task-notes" name="notes" rows="3" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"></textarea>
-                    </div>
-                    <div class="flex justify-end pt-4 space-x-3">
-                         <button type="button" class="close-modal-btn bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-md py-2 px-4 text-sm font-medium">Cancel</button>
-                        <button type="submit" id="save-task-btn" class="bg-indigo-600 hover:bg-indigo-700 text-white rounded-md py-2 px-4 text-sm font-medium flex items-center justify-center">
-                             <span class="spinner-button hidden"></span> Save Task
-                        </button>
-                    </div>
-                </form>
-            </div>
-        </div>
-    </div>
-
-    <div id="subtask-modal" class="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 hidden p-4 no-print">
-        <div class="bg-white rounded-lg shadow-xl max-w-lg w-full modal-content">
-            <div class="bg-gray-100 py-3 px-4 rounded-t-lg flex justify-between items-center">
-                <h3 id="subtask-modal-title" class="text-lg font-semibold text-gray-800">Add New Subtask</h3>
-                <button class="close-modal-btn text-gray-500 hover:text-gray-700 text-2xl">&times;</button>
-            </div>
-            <div class="p-6">
-                <form id="subtask-form" class="space-y-4">
-                    <input type="hidden" id="subtask-id" name="id">
-                    <input type="hidden" id="subtask-major-task-id" name="major_task_id">
-                    <div>
-                        <label for="subtask-name" class="block text-sm font-medium text-gray-700">Subtask Name <span class="text-red-500">*</span></label>
-                        <input type="text" id="subtask-name" name="task_name" required class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
-                    </div>
-                    <div>
-                        <label for="subtask-description" class="block text-sm font-medium text-gray-700">Description</label>
-                        <textarea id="subtask-description" name="description" rows="3" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"></textarea>
-                    </div>
-                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <div>
-                            <label for="subtask-priority" class="block text-sm font-medium text-gray-700">Priority</label>
-                            <select id="subtask-priority" name="priority" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
+                        <div class="col-md-3">
+                            <label for="filter-priority" class="form-label">Priority</label>
+                            <select class="form-select" id="filter-priority">
+                                <option value="">All Priorities</option>
                                 <option value="Low">Low</option>
-                                <option value="Medium" selected>Medium</option>
+                                <option value="Medium">Medium</option>
                                 <option value="High">High</option>
                                 <option value="Critical">Critical</option>
                             </select>
                         </div>
-                        <div>
-                            <label for="subtask-deadline" class="block text-sm font-medium text-gray-700">Deadline</label>
-                            <input type="date" id="subtask-deadline" name="deadline" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
+                        <div class="col-md-2 d-flex align-items-end">
+                            <button class="btn btn-primary w-100" id="apply-filters-btn">Apply Filters</button>
                         </div>
                     </div>
-                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <div>
-                            <label for="subtask-status" class="block text-sm font-medium text-gray-700">Status</label>
-                            <select id="subtask-status" name="status" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
-                                <option value="To Do">To Do</option>
-                                <option value="In Progress">In Progress</option>
-                                <option value="Completed">Completed</option>
-                                <option value="On Hold">On Hold</option>
-                                <option value="Cancelled">Cancelled</option>
-                            </select>
-                        </div>
-                        <div>
-                            <label for="subtask-urgency" class="block text-sm font-medium text-gray-700">Urgency</label>
-                            <select id="subtask-urgency" name="urgency" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
-                                <option value="Flexible">Flexible</option>
-                                <option value="Soon" selected>Soon</option>
-                                <option value="Immediate">Immediate</option>
-                                <option value="Daily">Daily</option>
-                                <option value="Weekly">Weekly</option>
-                                <option value="Periodic">Periodic</option>
-                            </select>
-                        </div>
-                    </div>
-                     <div>
-                        <label for="subtask-importance" class="block text-sm font-medium text-gray-700">Importance</label>
-                        <select id="subtask-importance" name="importance" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
-                            <option value="Routine">Routine</option>
-                            <option value="Important" selected>Important</option>
-                            <option value="Critical">Critical</option>
-                        </select>
-                    </div>
-                    <div>
-                        <label for="subtask-working-with" class="block text-sm font-medium text-gray-700">Working With</label>
-                        <input type="text" id="subtask-working-with" name="working_with" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
-                    </div>
-                    <div>
-                        <label for="subtask-percent-complete" class="block text-sm font-medium text-gray-700">% Complete</label>
-                         <div class="flex items-center mt-1">
-                            <input type="range" id="subtask-percent-complete" name="percent_complete" min="0" max="100" value="0" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
-                            <span id="subtask-percent-value" class="ml-3 text-sm text-gray-600 w-10 text-right">0%</span>
-                        </div>
-                    </div>
-                    <div>
-                        <label for="subtask-notes" class="block text-sm font-medium text-gray-700">Notes</label>
-                        <textarea id="subtask-notes" name="notes" rows="3" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"></textarea>
-                    </div>
-                    <div class="flex justify-end pt-4 space-x-3">
-                        <button type="button" class="close-modal-btn bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-md py-2 px-4 text-sm font-medium">Cancel</button>
-                        <button type="submit" id="save-subtask-btn" class="bg-indigo-600 hover:bg-indigo-700 text-white rounded-md py-2 px-4 text-sm font-medium flex items-center justify-center">
-                            <span class="spinner-button hidden"></span> Save Subtask
-                        </button>
-                    </div>
-                </form>
+                </div>
+            </div>
+            
+            <div id="tasks-list-container">
+                <div class="loading-container">
+                    <div class="loading-spinner"></div>
+                    <p>Loading tasks...</p>
+                </div>
             </div>
         </div>
-    </div>
-
-    <div id="delete-confirm-modal" class="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 hidden p-4 no-print">
-        <div class="bg-white rounded-lg shadow-xl max-w-md w-full">
-            <div class="bg-red-100 py-3 px-4 rounded-t-lg flex justify-between items-center">
-                <h3 class="text-lg font-semibold text-red-800">Confirm Deletion</h3>
-                <button class="close-modal-btn text-gray-500 hover:text-gray-700 text-2xl">&times;</button>
+        
+        <!-- Reports Section -->
+        <div id="reports-section" class="content-section">
+            <h1 class="mb-4">Reports</h1>
+            <div class="card">
+                <div class="card-body">
+                    <p class="card-text">Reports functionality will be added in a future update.</p>
+                </div>
             </div>
-            <div class="p-6">
-                <p id="delete-confirm-message" class="text-gray-700 mb-6">Are you sure you want to delete this item? This action cannot be undone.</p>
-                <div class="flex justify-end space-x-3">
-                    <button type="button" class="close-modal-btn bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-md py-2 px-4 text-sm font-medium">Cancel</button>
-                    <button type="button" id="confirm-delete-btn" class="bg-red-600 hover:bg-red-700 text-white rounded-md py-2 px-4 text-sm font-medium flex items-center justify-center">
-                         <span class="spinner-button hidden"></span> Delete
-                    </button>
+        </div>
+        
+        <!-- Settings Section -->
+        <div id="settings-section" class="content-section">
+            <h1 class="mb-4">Settings</h1>
+            <div class="card">
+                <div class="card-body">
+                    <p class="card-text">Settings functionality will be added in a future update.</p>
                 </div>
             </div>
         </div>
     </div>
-
-<script>
-document.addEventListener('DOMContentLoaded', function() {
-    // --- Configuration ---
-    const API_BASE_URL = 'api/'; // Adjust if your API folder is elsewhere
-
-    // --- Global State ---
-    let allPeriods = [];
-    let allMajorTasks = [];
-    let currentDeleteItem = null; // { type: 'period'/'task'/'subtask', id: itemId }
-    let progressChartInstance = null;
-
-    // --- DOM Elements ---
-    const periodsContainer = document.getElementById('periods-container');
-    const noPeriodsMessage = document.getElementById('no-periods-message');
-    const majorTasksTbody = document.getElementById('major-tasks-tbody');
-    const noMajorTasksRow = document.getElementById('no-major-tasks-row');
-    const subtasksTbody = document.getElementById('subtasks-tbody');
-    const noSubtasksRow = document.getElementById('no-subtasks-row');
-    const periodFilterSelect = document.getElementById('period-filter');
-    const taskPeriodSelect = document.getElementById('task-period-id'); // In task modal
-    const subtaskMajorTaskIdInput = document.getElementById('subtask-major-task-id');
-
-    const periodModal = document.getElementById('period-modal');
-    const periodForm = document.getElementById('period-form');
-    const periodModalTitle = document.getElementById('period-modal-title');
-    const savePeriodBtn = document.getElementById('save-period-btn');
-
-    const taskModal = document.getElementById('task-modal');
-    const taskForm = document.getElementById('task-form');
-    const taskModalTitle = document.getElementById('task-modal-title');
-    const saveTaskBtn = document.getElementById('save-task-btn');
-    const taskPercentCompleteSlider = document.getElementById('task-percent-complete');
-    const taskPercentValueDisplay = document.getElementById('task-percent-value');
-
-    const subtaskModal = document.getElementById('subtask-modal');
-    const subtaskForm = document.getElementById('subtask-form');
-    const subtaskModalTitle = document.getElementById('subtask-modal-title');
-    const saveSubtaskBtn = document.getElementById('save-subtask-btn');
-    const addSubtaskBtnGlobal = document.getElementById('add-subtask-btn'); // Button in subtasks section header
-    const subtaskPercentCompleteSlider = document.getElementById('subtask-percent-complete');
-    const subtaskPercentValueDisplay = document.getElementById('subtask-percent-value');
-
-
-    const subtasksDisplaySection = document.getElementById('subtasks-display-section');
-    const currentMajorTaskNameSpan = document.getElementById('current-major-task-name');
-
-    const deleteConfirmModal = document.getElementById('delete-confirm-modal');
-    const confirmDeleteBtn = document.getElementById('confirm-delete-btn');
-    const deleteConfirmMessage = document.getElementById('delete-confirm-message');
-
-    const globalAlert = document.getElementById('global-alert');
-
-    // --- Utility Functions ---
-    function showGlobalAlert(message, type = 'error') {
-        globalAlert.textContent = message;
-        globalAlert.classList.remove('hidden', 'bg-red-100', 'text-red-700', 'bg-green-100', 'text-green-700', 'bg-blue-100', 'text-blue-700');
-        if (type === 'error') {
-            globalAlert.classList.add('bg-red-100', 'text-red-700');
-        } else if (type === 'success') {
-            globalAlert.classList.add('bg-green-100', 'text-green-700');
-        } else { // info
-            globalAlert.classList.add('bg-blue-100', 'text-blue-700');
-        }
-        globalAlert.classList.remove('hidden');
-        setTimeout(() => globalAlert.classList.add('hidden'), 5000); // Auto-hide after 5 seconds
-    }
-
-    function openModal(modalElement) {
-        modalElement.classList.remove('hidden');
-    }
-
-    function closeModal(modalElement) {
-        modalElement.classList.add('hidden');
-        // Reset forms within the modal if any
-        const form = modalElement.querySelector('form');
-        if (form) form.reset();
-        // Reset specific fields like hidden IDs
-        if (modalElement.id === 'period-modal') document.getElementById('period-id').value = '';
-        if (modalElement.id === 'task-modal') document.getElementById('task-id').value = '';
-        if (modalElement.id === 'subtask-modal') document.getElementById('subtask-id').value = '';
-    }
-
-    function formatDateForInput(dateString) {
-        if (!dateString || dateString === '0000-00-00') return '';
-        try {
-            const date = new Date(dateString);
-            // Adjust for timezone offset to get correct YYYY-MM-DD
-            date.setMinutes(date.getMinutes() - date.getTimezoneOffset());
-            return date.toISOString().split('T')[0];
-        } catch (e) {
-            return '';
-        }
-    }
     
-    function getStatusColor(status) {
-        switch (status) {
-            case 'Completed': return 'bg-green-500';
-            case 'In Progress': return 'bg-blue-500';
-            case 'On Hold': return 'bg-yellow-500';
-            case 'Cancelled': return 'bg-red-500';
-            case 'To Do': default: return 'bg-gray-300';
-        }
-    }
-
-    function getPriorityClasses(priority) {
-        switch (priority) {
-            case 'Critical': return 'bg-red-600 text-white';
-            case 'High': return 'bg-red-200 text-red-800';
-            case 'Medium': return 'bg-yellow-200 text-yellow-800';
-            case 'Low': return 'bg-green-200 text-green-800';
-            default: return 'bg-gray-200 text-gray-800';
-        }
-    }
-    
-    function showButtonSpinner(button, show = true) {
-        const spinner = button.querySelector('.spinner-button');
-        const textNode = Array.from(button.childNodes).find(node => node.nodeType === Node.TEXT_NODE);
-        if (spinner) spinner.classList.toggle('hidden', !show);
-        if (textNode) textNode.textContent = show ? ' Processing...' : button.dataset.originalText || textNode.textContent;
-        button.disabled = show;
-    }
-
-
-    // --- API Call Functions ---
-    async function fetchData(endpoint, options = {}) {
-        showGlobalAlert('Loading data...', 'info');
-        try {
-            const response = await fetch(API_BASE_URL + endpoint, options);
-            if (!response.ok) {
-                const errorData = await response.json().catch(() => ({ message: `HTTP error! Status: ${response.status}` }));
-                throw new Error(errorData.message || `HTTP error! Status: ${response.status}`);
-            }
-            const data = await response.json();
-            if (!data.success) {
-                throw new Error(data.message || 'API request failed');
-            }
-            globalAlert.classList.add('hidden'); // Hide loading message
-            return data.data;
-        } catch (error) {
-            console.error(`Error fetching ${endpoint}:`, error);
-            showGlobalAlert(`Failed to load data from ${endpoint}: ${error.message}`, 'error');
-            throw error; // Re-throw to allow caller to handle
-        }
-    }
-
-    async function postData(endpoint, formData, action) {
-        formData.append('action', action);
-        try {
-            const response = await fetch(API_BASE_URL + endpoint, {
-                method: 'POST',
-                body: formData
-            });
-            const result = await response.json();
-            if (!result.success) {
-                let errorMessage = result.message || `Failed to ${action} item.`;
-                if (result.errors) {
-                    errorMessage += ' Details: ' + result.errors.join(', ');
-                }
-                throw new Error(errorMessage);
-            }
-            return result;
-        } catch (error) {
-            console.error(`Error in ${action} for ${endpoint}:`, error);
-            showGlobalAlert(error.message, 'error');
-            throw error;
-        }
-    }
-
-    // --- Rendering Functions ---
-    function renderPeriods(periods) {
-        periodsContainer.innerHTML = ''; // Clear existing
-        periodFilterSelect.innerHTML = '<option value="all">All Periods</option>'; // Reset filter
-        taskPeriodSelect.innerHTML = '<option value="">Select Period</option>'; // Reset task modal dropdown
-
-        if (periods && periods.length > 0) {
-            noPeriodsMessage.classList.add('hidden');
-            periods.forEach(period => {
-                const card = `
-                    <div class="period-card bg-white rounded-lg shadow-md overflow-hidden flex flex-col" data-period-id="${period.id}">
-                        <div class="p-5 flex-grow">
-                            <h3 class="font-bold text-lg text-indigo-700 mb-1">${htmlspecialchars(period.name)}</h3>
-                            <p class="text-gray-500 text-xs mb-2">
-                                ${period.start_date ? formatDateForInput(period.start_date) : 'N/A'} - 
-                                ${period.end_date ? formatDateForInput(period.end_date) : 'N/A'}
-                            </p>
-                            <p class="text-gray-600 text-sm mb-3 h-10 overflow-hidden">${htmlspecialchars(period.description || 'No description')}</p>
-                             <div class="text-xs text-gray-500 mb-1">Status: <span class="font-semibold ${period.status === 'active' ? 'text-green-600' : 'text-gray-600'}">${htmlspecialchars(period.status)}</span></div>
+    <!-- Period Modal -->
+    <div class="modal fade" id="periodModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="periodModalTitle">Add Period</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="period-form">
+                        <input type="hidden" id="period-id">
+                        <div class="mb-3">
+                            <label for="period-name" class="form-label">Period Name</label>
+                            <input type="text" class="form-control" id="period-name" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="period-description" class="form-label">Description</label>
+                            <textarea class="form-control" id="period-description" rows="3"></textarea>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label for="period-start-date" class="form-label">Start Date</label>
+                                                               <input type="date" class="form-control" id="period-start-date">
                             </div>
-                        <div class="bg-gray-50 px-5 py-3 flex justify-end space-x-2 no-print">
-                            <button class="edit-period-btn text-blue-600 hover:text-blue-800 text-sm" data-id="${period.id}"><i class="fas fa-edit mr-1"></i> Edit</button>
-                            <button class="delete-item-btn text-red-600 hover:text-red-800 text-sm" data-id="${period.id}" data-type="period" data-name="${htmlspecialchars(period.name)}"><i class="fas fa-trash-alt mr-1"></i> Delete</button>
+                            <div class="col-md-6 mb-3">
+                                <label for="period-end-date" class="form-label">End Date</label>
+                                <input type="date" class="form-control" id="period-end-date">
+                            </div>
                         </div>
-                    </div>`;
-                periodsContainer.insertAdjacentHTML('beforeend', card);
-                // Populate filter and modal dropdowns
-                periodFilterSelect.add(new Option(period.name, period.id));
-                taskPeriodSelect.add(new Option(period.name, period.id));
-            });
-        } else {
-            noPeriodsMessage.classList.remove('hidden');
-        }
-        allPeriods = periods || [];
-        updateSummaryCards();
-        updateProgressChart();
-    }
+                        <div class="mb-3">
+                            <label for="period-status" class="form-label">Status</label>
+                            <select class="form-select" id="period-status">
+                                <option value="active">Active</option>
+                                <option value="completed">Completed</option>
+                                <option value="planned">Planned</option>
+                                <option value="archived">Archived</option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label for="period-color" class="form-label">Color</label>
+                            <input type="color" class="form-control form-control-color" id="period-color" value="#3498db">
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="save-period-btn">Save</button>
+                </div>
+            </div>
+        </div>
+    </div>
 
-    function renderMajorTasks(tasks) {
-        majorTasksTbody.innerHTML = ''; // Clear existing
-        if (tasks && tasks.length > 0) {
-            noMajorTasksRow.classList.add('hidden');
-            tasks.forEach(task => {
-                const periodName = allPeriods.find(p => p.id == task.period_id)?.name || 'N/A';
-                const priorityClasses = getPriorityClasses(task.priority);
-                const row = `
-                    <tr class="task-row" data-task-id="${task.id}">
-                        <td class="px-6 py-4 whitespace-nowrap">
-                            <div class="text-sm font-medium text-gray-900">${htmlspecialchars(task.task_name)}</div>
-                            <div class="text-xs text-gray-500">${htmlspecialchars(task.working_with || 'Solo')}</div>
-                        </td>
-                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${htmlspecialchars(periodName)}</td>
-                        <td class="px-6 py-4 whitespace-nowrap"><span class="px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${priorityClasses}">${htmlspecialchars(task.priority)}</span></td>
-                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${task.deadline ? formatDateForInput(task.deadline) : 'N/A'}</td>
-                        <td class="px-6 py-4 whitespace-nowrap"><span class="px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${getStatusBadgeClasses(task.status)}">${htmlspecialchars(task.status)}</span></td>
-                        <td class="px-6 py-4 whitespace-nowrap">
-                            <div class="text-xs text-gray-500 mb-1">${task.percent_complete || 0}%</div>
-                            <div class="progress-container w-24 sm:w-32"><div class="progress-bar ${getStatusColor(task.status)}" style="width: ${task.percent_complete || 0}%"></div></div>
-                        </td>
-                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-1 no-print">
-                            <button class="view-subtasks-btn text-green-600 hover:text-green-800" data-id="${task.id}" data-name="${htmlspecialchars(task.task_name)}" title="View Subtasks"><i class="fas fa-list-ul"></i></button>
-                            <button class="edit-task-btn text-blue-600 hover:text-blue-800" data-id="${task.id}" title="Edit Task"><i class="fas fa-edit"></i></button>
-                            <button class="delete-item-btn text-red-600 hover:text-red-800" data-id="${task.id}" data-type="task" data-name="${htmlspecialchars(task.task_name)}" title="Delete Task"><i class="fas fa-trash-alt"></i></button>
-                        </td>
-                    </tr>`;
-                majorTasksTbody.insertAdjacentHTML('beforeend', row);
-            });
-        } else {
-            noMajorTasksRow.classList.remove('hidden');
-        }
-        allMajorTasks = tasks || [];
-        updateSummaryCards();
-        updateProgressChart();
-    }
+    <!-- Task Modal -->
+    <div class="modal fade" id="taskModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="taskModalTitle">Add Task</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="task-form">
+                        <input type="hidden" id="task-id">
+                        <div class="mb-3">
+                            <label for="task-name" class="form-label">Task Name</label>
+                            <input type="text" class="form-control" id="task-name" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="task-period" class="form-label">Period</label>
+                            <select class="form-select" id="task-period">
+                                <option value="">No Period</option>
+                                <!-- Periods will be loaded here -->
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label for="task-description" class="form-label">Description</label>
+                            <textarea class="form-control" id="task-description" rows="3"></textarea>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label for="task-priority" class="form-label">Priority</label>
+                                <select class="form-select" id="task-priority">
+                                    <option value="Low">Low</option>
+                                    <option value="Medium" selected>Medium</option>
+                                    <option value="High">High</option>
+                                    <option value="Critical">Critical</option>
+                                </select>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label for="task-status" class="form-label">Status</label>
+                                <select class="form-select" id="task-status">
+                                    <option value="To Do" selected>To Do</option>
+                                    <option value="In Progress">In Progress</option>
+                                    <option value="Completed">Completed</option>
+                                    <option value="On Hold">On Hold</option>
+                                    <option value="Cancelled">Cancelled</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label for="task-urgency" class="form-label">Urgency</label>
+                                <select class="form-select" id="task-urgency">
+                                    <option value="Flexible">Flexible</option>
+                                    <option value="Soon" selected>Soon</option>
+                                    <option value="Immediate">Immediate</option>
+                                    <option value="Daily">Daily</option>
+                                    <option value="Weekly">Weekly</option>
+                                    <option value="Periodic">Periodic</option>
+                                </select>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label for="task-importance" class="form-label">Importance</label>
+                                <select class="form-select" id="task-importance">
+                                    <option value="Routine">Routine</option>
+                                    <option value="Important" selected>Important</option>
+                                    <option value="Critical">Critical</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label for="task-deadline" class="form-label">Deadline</label>
+                                <input type="date" class="form-control" id="task-deadline">
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label for="task-assigned-to" class="form-label">Assigned To</label>
+                                <select class="form-select" id="task-assigned-to">
+                                    <option value="">Unassigned</option>
+                                    <!-- Users will be loaded here -->
+                                </select>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label for="task-progress" class="form-label">Progress</label>
+                                <div class="input-group">
+                                    <input type="number" class="form-control" id="task-progress" min="0" max="100" value="0">
+                                    <span class="input-group-text">%</span>
+                                </div>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label for="task-working-with" class="form-label">Working With</label>
+                                <input type="text" class="form-control" id="task-working-with" placeholder="Other people involved">
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label for="task-estimated-hours" class="form-label">Estimated Hours</label>
+                                <input type="number" class="form-control" id="task-estimated-hours" min="0" step="0.5">
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label for="task-actual-hours" class="form-label">Actual Hours</label>
+                                <input type="number" class="form-control" id="task-actual-hours" min="0" step="0.5">
+                            </div>
+                        </div>
+                        <div class="mb-3">
+                            <label for="task-notes" class="form-label">Notes</label>
+                            <textarea class="form-control" id="task-notes" rows="2"></textarea>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="save-task-btn">Save</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Subtask Modal -->
+    <div class="modal fade" id="subtaskModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="subtaskModalTitle">Add Subtask</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="subtask-form">
+                        <input type="hidden" id="subtask-id">
+                        <input type="hidden" id="subtask-major-task-id">
+                        <div class="mb-3">
+                            <label for="subtask-name" class="form-label">Subtask Name</label>
+                            <input type="text" class="form-control" id="subtask-name" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="subtask-description" class="form-label">Description</label>
+                            <textarea class="form-control" id="subtask-description" rows="2"></textarea>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label for="subtask-status" class="form-label">Status</label>
+                                <select class="form-select" id="subtask-status">
+                                    <option value="To Do" selected>To Do</option>
+                                    <option value="In Progress">In Progress</option>
+                                    <option value="Completed">Completed</option>
+                                    <option value="On Hold">On Hold</option>
+                                    <option value="Cancelled">Cancelled</option>
+                                </select>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label for="subtask-deadline" class="form-label">Deadline</label>
+                                <input type="date" class="form-control" id="subtask-deadline">
+                            </div>
+                        </div>
+                        <div class="mb-3">
+                            <label for="subtask-progress" class="form-label">Progress</label>
+                            <div class="input-group">
+                                <input type="number" class="form-control" id="subtask-progress" min="0" max="100" value="0">
+                                <span class="input-group-text">%</span>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="save-subtask-btn">Save</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- JavaScript Libraries -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
     
-    function getStatusBadgeClasses(status) {
-        switch (status) {
-            case 'Completed': return 'bg-green-100 text-green-800';
-            case 'In Progress': return 'bg-blue-100 text-blue-800';
-            case 'On Hold': return 'bg-yellow-100 text-yellow-800';
-            case 'Cancelled': return 'bg-red-100 text-red-800';
-            case 'To Do': default: return 'bg-gray-100 text-gray-800';
-        }
-    }
+    <script>
+        // Global variables
+        let periodsData = [];
+        let tasksData = [];
+        let usersData = [];
+        let currentUser = null;
 
-    function renderSubtasks(subtasks) {
-        subtasksTbody.innerHTML = ''; // Clear existing
-        if (subtasks && subtasks.length > 0) {
-            noSubtasksRow.classList.add('hidden');
-            subtasks.forEach(subtask => {
-                const priorityClasses = getPriorityClasses(subtask.priority);
-                const row = `
-                    <tr class="task-row" data-subtask-id="${subtask.id}">
-                        <td class="px-6 py-4 whitespace-nowrap">
-                            <div class="text-sm font-medium text-gray-900">${htmlspecialchars(subtask.task_name)}</div>
-                             <div class="text-xs text-gray-500">${htmlspecialchars(subtask.working_with || 'Solo')}</div>
-                        </td>
-                        <td class="px-6 py-4 whitespace-nowrap"><span class="px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${priorityClasses}">${htmlspecialchars(subtask.priority)}</span></td>
-                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${subtask.deadline ? formatDateForInput(subtask.deadline) : 'N/A'}</td>
-                        <td class="px-6 py-4 whitespace-nowrap"><span class="px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${getStatusBadgeClasses(subtask.status)}">${htmlspecialchars(subtask.status)}</span></td>
-                        <td class="px-6 py-4 whitespace-nowrap">
-                            <div class="text-xs text-gray-500 mb-1">${subtask.percent_complete || 0}%</div>
-                            <div class="progress-container w-24 sm:w-32"><div class="progress-bar ${getStatusColor(subtask.status)}" style="width: ${subtask.percent_complete || 0}%"></div></div>
-                        </td>
-                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-1 no-print">
-                            <button class="edit-subtask-btn text-blue-600 hover:text-blue-800" data-id="${subtask.id}" title="Edit Subtask"><i class="fas fa-edit"></i></button>
-                            <button class="delete-item-btn text-red-600 hover:text-red-800" data-id="${subtask.id}" data-type="subtask" data-name="${htmlspecialchars(subtask.task_name)}" title="Delete Subtask"><i class="fas fa-trash-alt"></i></button>
-                        </td>
-                    </tr>`;
-                subtasksTbody.insertAdjacentHTML('beforeend', row);
+        // Utility functions
+        function formatDate(dateString) {
+            if (!dateString) return 'Not set';
+            const date = new Date(dateString);
+            return date.toLocaleDateString('en-US', { 
+                year: 'numeric', 
+                month: 'short', 
+                day: 'numeric' 
             });
-        } else {
-            noSubtasksRow.classList.remove('hidden');
         }
-    }
 
-    function htmlspecialchars(str) {
-        if (typeof str !== 'string') return '';
-        const map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' };
-        return str.replace(/[&<>"']/g, m => map[m]);
-    }
-    
-    function updateSummaryCards() {
-        document.getElementById('summary-active-periods').textContent = allPeriods.filter(p => p.status === 'active').length;
-        document.getElementById('summary-major-tasks').textContent = allMajorTasks.length;
-        
-        // For subtasks and overall completion, we'd need to fetch all subtasks or calculate more complexly
-        // For now, let's assume these are placeholders or would be updated by more specific logic
-        // Example: Calculate overall completion based on major tasks
-        if (allMajorTasks.length > 0) {
-            const totalPercent = allMajorTasks.reduce((sum, task) => sum + (parseInt(task.percent_complete) || 0), 0);
-            document.getElementById('summary-overall-completion').textContent = Math.round(totalPercent / allMajorTasks.length) + '%';
-        } else {
-            document.getElementById('summary-overall-completion').textContent = '0%';
+        function getDaysRemaining(dateString) {
+            if (!dateString) return null;
+            
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            
+            const deadline = new Date(dateString);
+            deadline.setHours(0, 0, 0, 0);
+            
+            const diffTime = deadline - today;
+            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+            
+            return diffDays;
         }
-        // Subtask count would require fetching all subtasks.
-        // For simplicity, this might be fetched separately or if tasks data includes subtask counts.
-    }
 
-    function updateProgressChart() {
-        const activePeriods = allPeriods.filter(p => p.status === 'active' || p.status === 'planned');
-        const labels = activePeriods.map(p => p.name);
-        const data = activePeriods.map(period => {
-            const tasksInPeriod = allMajorTasks.filter(t => t.period_id == period.id);
-            if (tasksInPeriod.length === 0) return 0;
-            const totalPercent = tasksInPeriod.reduce((sum, task) => sum + (parseInt(task.percent_complete) || 0), 0);
-            return Math.round(totalPercent / tasksInPeriod.length);
-        });
-
-        if (progressChartInstance) {
-            progressChartInstance.data.labels = labels;
-            progressChartInstance.data.datasets[0].data = data;
-            progressChartInstance.update();
-        } else {
-            const ctx = document.getElementById('progressChart').getContext('2d');
-            progressChartInstance = new Chart(ctx, {
-                type: 'bar',
-                data: {
-                    labels: labels,
-                    datasets: [{
-                        label: 'Avg. Task Progress (%)',
-                        data: data,
-                        backgroundColor: 'rgba(79, 70, 229, 0.6)', // Indigo-600
-                        borderColor: 'rgba(79, 70, 229, 1)',
-                        borderWidth: 1
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    scales: { y: { beginAtZero: true, max: 100, ticks: { callback: value => value + '%' } } },
-                    plugins: { tooltip: { callbacks: { label: context => context.dataset.label + ': ' + context.raw + '%' } } }
+        function getStatusClass(status, type = 'task') {
+            if (type === 'period') {
+                switch (status?.toLowerCase()) {
+                    case 'active': return 'status-active';
+                    case 'completed': return 'status-completed';
+                    case 'planned': return 'status-planned';
+                    case 'archived': return 'status-archived';
+                    default: return 'status-active';
                 }
-            });
-        }
-    }
-
-
-    // --- Event Handlers ---
-    // Modal open/close
-    document.getElementById('add-period-btn').addEventListener('click', () => {
-        periodModalTitle.textContent = 'Add New Period';
-        periodForm.reset(); // Ensure form is clean
-        document.getElementById('period-id').value = ''; // Clear ID for new entry
-        openModal(periodModal);
-    });
-    document.getElementById('add-task-btn').addEventListener('click', () => {
-        taskModalTitle.textContent = 'Add New Major Task';
-        taskForm.reset();
-        document.getElementById('task-id').value = '';
-        taskPercentValueDisplay.textContent = '0%'; // Reset slider display
-        openModal(taskModal);
-    });
-     // Add Subtask button in the subtasks section header
-    addSubtaskBtnGlobal.addEventListener('click', () => {
-        const majorTaskId = addSubtaskBtnGlobal.dataset.majorTaskId;
-        if (!majorTaskId) {
-            showGlobalAlert('Cannot add subtask: No major task selected.', 'error');
-            return;
-        }
-        subtaskModalTitle.textContent = 'Add New Subtask';
-        subtaskForm.reset();
-        document.getElementById('subtask-id').value = '';
-        subtaskMajorTaskIdInput.value = majorTaskId; // Set the major_task_id for the new subtask
-        subtaskPercentValueDisplay.textContent = '0%';
-        openModal(subtaskModal);
-    });
-
-    document.querySelectorAll('.close-modal-btn').forEach(btn => {
-        btn.addEventListener('click', () => closeModal(btn.closest('.fixed.inset-0')));
-    });
-
-    // Form Submissions
-    periodForm.addEventListener('submit', async function(e) {
-        e.preventDefault();
-        const formData = new FormData(this);
-        const periodId = formData.get('id');
-        const action = periodId ? 'update' : 'create';
-        const saveBtn = document.getElementById('save-period-btn');
-        saveBtn.dataset.originalText = saveBtn.textContent; // Store original text
-        showButtonSpinner(saveBtn, true);
-
-        try {
-            const result = await postData('periods.php', formData, action);
-            showGlobalAlert(result.message || `Period ${action}d successfully!`, 'success');
-            closeModal(periodModal);
-            loadAllData(); // Refresh data
-        } catch (error) {
-            // Error already shown by postData
-        } finally {
-            showButtonSpinner(saveBtn, false);
-        }
-    });
-
-    taskForm.addEventListener('submit', async function(e) {
-        e.preventDefault();
-        const formData = new FormData(this);
-        const taskId = formData.get('id');
-        const action = taskId ? 'update' : 'create';
-        const saveBtn = document.getElementById('save-task-btn');
-        saveBtn.dataset.originalText = saveBtn.textContent;
-        showButtonSpinner(saveBtn, true);
-        
-        try {
-            const result = await postData('tasks.php', formData, action);
-            showGlobalAlert(result.message || `Task ${action}d successfully!`, 'success');
-            closeModal(taskModal);
-            loadAllData(); // Refresh data
-        } catch (error) {
-            // Error already shown
-        } finally {
-            showButtonSpinner(saveBtn, false);
-        }
-    });
-    
-    // Percent complete slider for Task Modal
-    if (taskPercentCompleteSlider && taskPercentValueDisplay) {
-        taskPercentCompleteSlider.addEventListener('input', function() {
-            taskPercentValueDisplay.textContent = this.value + '%';
-        });
-    }
-    // Percent complete slider for Subtask Modal
-    if (subtaskPercentCompleteSlider && subtaskPercentValueDisplay) {
-        subtaskPercentCompleteSlider.addEventListener('input', function() {
-            subtaskPercentValueDisplay.textContent = this.value + '%';
-        });
-    }
-
-
-    subtaskForm.addEventListener('submit', async function(e) {
-        e.preventDefault();
-        const formData = new FormData(this);
-        const subtaskId = formData.get('id');
-        const action = subtaskId ? 'update' : 'create';
-        const majorTaskId = formData.get('major_task_id'); // Ensure this is set
-        const saveBtn = document.getElementById('save-subtask-btn');
-        saveBtn.dataset.originalText = saveBtn.textContent;
-        showButtonSpinner(saveBtn, true);
-
-        if (!majorTaskId) {
-            showGlobalAlert('Major Task ID is missing. Cannot save subtask.', 'error');
-            showButtonSpinner(saveBtn, false);
-            return;
-        }
-        
-        try {
-            const result = await postData('subtasks.php', formData, action);
-            showGlobalAlert(result.message || `Subtask ${action}d successfully!`, 'success');
-            closeModal(subtaskModal);
-            // Refresh subtasks for the current major task
-            if (subtasksDisplaySection.style.display !== 'none' && addSubtaskBtnGlobal.dataset.majorTaskId) {
-                 loadSubtasksForMajorTask(addSubtaskBtnGlobal.dataset.majorTaskId, currentMajorTaskNameSpan.textContent);
-            }
-            loadAllData(); // Also refresh overall data for summary/chart
-        } catch (error) {
-            // Error already shown
-        } finally {
-            showButtonSpinner(saveBtn, false);
-        }
-    });
-
-    // Edit and Delete buttons (event delegation)
-    document.body.addEventListener('click', async function(e) {
-        // Edit Period
-        if (e.target.closest('.edit-period-btn')) {
-            const btn = e.target.closest('.edit-period-btn');
-            const periodId = btn.dataset.id;
-            const period = allPeriods.find(p => p.id == periodId);
-            if (period) {
-                periodModalTitle.textContent = 'Edit Period';
-                document.getElementById('period-id').value = period.id;
-                document.getElementById('period-name').value = period.name;
-                document.getElementById('period-description').value = period.description || '';
-                document.getElementById('period-start-date').value = formatDateForInput(period.start_date);
-                document.getElementById('period-end-date').value = formatDateForInput(period.end_date);
-                document.getElementById('period-status').value = period.status || 'active';
-                openModal(periodModal);
+            } else {
+                switch (status) {
+                    case 'To Do': return 'status-to-do';
+                    case 'In Progress': return 'status-in-progress';
+                    case 'Completed': return 'status-completed-task';
+                    case 'On Hold': return 'status-on-hold';
+                    case 'Cancelled': return 'status-cancelled';
+                    default: return 'status-to-do';
+                }
             }
         }
-        // Edit Task
-        if (e.target.closest('.edit-task-btn')) {
-            const btn = e.target.closest('.edit-task-btn');
-            const taskId = btn.dataset.id;
-            const task = allMajorTasks.find(t => t.id == taskId);
-            if (task) {
-                taskModalTitle.textContent = 'Edit Major Task';
-                document.getElementById('task-id').value = task.id;
-                document.getElementById('task-name').value = task.task_name;
-                document.getElementById('task-description').value = task.description || '';
-                document.getElementById('task-period-id').value = task.period_id || '';
-                document.getElementById('task-deadline').value = formatDateForInput(task.deadline);
-                document.getElementById('task-priority').value = task.priority || 'Medium';
-                document.getElementById('task-status').value = task.status || 'To Do';
-                document.getElementById('task-urgency').value = task.urgency || 'Soon';
-                document.getElementById('task-importance').value = task.importance || 'Important';
-                document.getElementById('task-working-with').value = task.working_with || '';
-                taskPercentCompleteSlider.value = task.percent_complete || 0;
-                taskPercentValueDisplay.textContent = (task.percent_complete || 0) + '%';
-                document.getElementById('task-notes').value = task.notes || '';
-                openModal(taskModal);
+
+        function getPriorityClass(priority) {
+            switch (priority) {
+                case 'Low': return 'priority-low';
+                case 'Medium': return 'priority-medium';
+                case 'High': return 'priority-high';
+                case 'Critical': return 'priority-critical';
+                default: return 'priority-medium';
             }
         }
-        // Edit Subtask
-        if (e.target.closest('.edit-subtask-btn')) {
-            const btn = e.target.closest('.edit-subtask-btn');
-            const subtaskId = btn.dataset.id;
-            // We need to fetch the subtask details as they are not stored globally in the same way
+
+        // API Functions
+        /**
+         * Fetches data from API with improved error handling
+         * @param {string} url - The API endpoint URL
+         * @returns {Promise<object>} - The parsed JSON response
+         */
+        async function fetchDataV2(url) {
+            console.log("Fetching from:", url);
             try {
-                const subtask = await fetchData(`subtasks.php?action=get&id=${subtaskId}`);
-                if (subtask) {
-                    subtaskModalTitle.textContent = 'Edit Subtask';
-                    document.getElementById('subtask-id').value = subtask.id;
-                    document.getElementById('subtask-major-task-id').value = subtask.major_task_id;
-                    document.getElementById('subtask-name').value = subtask.task_name;
-                    document.getElementById('subtask-description').value = subtask.description || '';
-                    document.getElementById('subtask-priority').value = subtask.priority || 'Medium';
-                    document.getElementById('subtask-deadline').value = formatDateForInput(subtask.deadline);
-                    document.getElementById('subtask-status').value = subtask.status || 'To Do';
-                    document.getElementById('subtask-urgency').value = subtask.urgency || 'Soon';
-                    document.getElementById('subtask-importance').value = subtask.importance || 'Important';
-                    document.getElementById('subtask-working-with').value = subtask.working_with || '';
-                    subtaskPercentCompleteSlider.value = subtask.percent_complete || 0;
-                    subtaskPercentValueDisplay.textContent = (subtask.percent_complete || 0) + '%';
-                    document.getElementById('subtask-notes').value = subtask.notes || '';
-                    openModal(subtaskModal);
+                const response = await fetch(url);
+                
+                // First get the text response
+                const textResponse = await response.text();
+                
+                // Try to parse as JSON
+                let jsonData;
+                try {
+                    jsonData = JSON.parse(textResponse);
+                } catch (jsonError) {
+                    console.error("JSON parse error:", jsonError);
+                    console.error("Raw response:", textResponse);
+                    
+                    // Throw a more descriptive error
+                    throw new Error(`Invalid JSON response from ${url}. Error: ${jsonError.message}`);
+                }
+                
+                // Check if response contains an error status
+                if (!response.ok || (jsonData && jsonData.status === 'error')) {
+                    throw new Error(jsonData?.message || `HTTP error! Status: ${response.status}`);
+                }
+                
+                return jsonData;
+            } catch (error) {
+                console.error(`Error fetching ${url}:`, error);
+                throw error;
+            }
+        }
+
+        /**
+         * Handles the delete operation for an item
+         * @param {string} type - The type of item to delete (period, majortask, subtask)
+         * @param {number} id - The ID of the item to delete
+         */
+        async function handleDelete(type, id) {
+            if (!confirm("Are you sure you want to delete this item? This action cannot be undone.")) {
+                return;
+            }
+            
+            try {
+                // Show loading indicator
+                const loadingEl = document.createElement('div');
+                loadingEl.className = 'loading-overlay';
+                loadingEl.innerHTML = '<div class="loading-spinner"></div><p>Deleting...</p>';
+                document.body.appendChild(loadingEl);
+                
+                // Use the delete API endpoint
+                const response = await fetchDataV2(`api/delete.php?type=${type}&id=${id}`);
+                
+                // Remove loading indicator
+                document.body.removeChild(loadingEl);
+                
+                // Show success message
+                alert(response.message || 'Item deleted successfully.');
+                
+                // Reload dashboard data
+                loadAllData();
+            } catch (error) {
+                // Remove loading indicator if exists
+                const loadingEl = document.querySelector('.loading-overlay');
+                if (loadingEl) {
+                    document.body.removeChild(loadingEl);
+                }
+                
+                // Show error message
+                alert(`Error deleting item: ${error.message}`);
+            }
+        }
+
+        // Data loading functions
+        async function loadUsers() {
+            try {
+                const response = await fetchDataV2('api/users.php?action=list');
+                usersData = response.data || [];
+                
+                // Update user dropdowns
+                const userSelect = document.getElementById('task-assigned-to');
+                userSelect.innerHTML = '<option value="">Unassigned</option>';
+                
+                usersData.forEach(user => {
+                    const option = document.createElement('option');
+                    option.value = user.id;
+                    option.textContent = user.username;
+                    userSelect.appendChild(option);
+                });
+                
+                // Load current user
+                await loadCurrentUser();
+            } catch (error) {
+                console.error('Error loading users:', error);
+            }
+        }
+
+        async function loadCurrentUser() {
+            try {
+                const response = await fetchDataV2('api/users.php?action=current');
+                
+                if (response.status === 'success' && response.is_logged_in) {
+                    currentUser = response.data;
+                    document.getElementById('current-username').textContent = currentUser.username;
                 }
             } catch (error) {
-                showGlobalAlert('Failed to load subtask details for editing.', 'error');
+                console.error('Error loading current user:', error);
+                // Not a critical error, so we don't need to show an alert
             }
         }
 
-        // Delete Item (Period, Task, Subtask)
-        if (e.target.closest('.delete-item-btn')) {
-            const btn = e.target.closest('.delete-item-btn');
-            currentDeleteItem = { type: btn.dataset.type, id: btn.dataset.id, name: btn.dataset.name };
-            deleteConfirmMessage.textContent = `Are you sure you want to delete the ${currentDeleteItem.type} "${currentDeleteItem.name}"? This action cannot be undone.`;
-            openModal(deleteConfirmModal);
-        }
-        
-        // View Subtasks
-        if (e.target.closest('.view-subtasks-btn')) {
-            const btn = e.target.closest('.view-subtasks-btn');
-            const majorTaskId = btn.dataset.id;
-            const majorTaskName = btn.dataset.name;
-            loadSubtasksForMajorTask(majorTaskId, majorTaskName);
-        }
-    });
-
-    confirmDeleteBtn.addEventListener('click', async () => {
-        if (!currentDeleteItem) return;
-        
-        const { type, id } = currentDeleteItem;
-        let endpoint = '';
-        if (type === 'period') endpoint = 'periods.php';
-        else if (type === 'task') endpoint = 'tasks.php';
-        else if (type === 'subtask') endpoint = 'subtasks.php';
-        else return;
-
-        const deleteBtn = document.getElementById('confirm-delete-btn');
-        deleteBtn.dataset.originalText = deleteBtn.textContent;
-        showButtonSpinner(deleteBtn, true);
-
-        try {
-            const formData = new FormData();
-            formData.append('id', id);
-            const result = await postData(endpoint, formData, 'delete');
-            showGlobalAlert(result.message || `${type.charAt(0).toUpperCase() + type.slice(1)} deleted successfully!`, 'success');
-            closeModal(deleteConfirmModal);
-            if (type === 'subtask' && subtasksDisplaySection.style.display !== 'none' && addSubtaskBtnGlobal.dataset.majorTaskId) {
-                loadSubtasksForMajorTask(addSubtaskBtnGlobal.dataset.majorTaskId, currentMajorTaskNameSpan.textContent);
+        async function loadPeriods() {
+            try {
+                const response = await fetchDataV2('api/periods.php?action=list');
+                periodsData = response.data || [];
+                
+                // Update period dropdowns
+                updatePeriodDropdowns();
+                
+                // Render periods on the periods page
+                renderPeriods();
+                
+                // Update recent periods on dashboard
+                renderRecentPeriods();
+                
+                // Update dashboard stats
+                updateDashboardStats();
+            } catch (error) {
+                console.error('Error loading periods:', error);
+                document.getElementById('periods-container').innerHTML = `
+                    <div class="col-12">
+                        <div class="error-container">
+                            <h3>Error Loading Periods</h3>
+                            <p>${error.message}</p>
+                            <button onclick="loadPeriods()" class="btn btn-primary">Try Again</button>
+                        </div>
+                    </div>
+                `;
             }
-            loadAllData(); // Refresh all data
-        } catch (error) {
-            // Error already shown
-        } finally {
-            showButtonSpinner(deleteBtn, false);
-            currentDeleteItem = null;
         }
-    });
-    
-    // Period Filter
-    periodFilterSelect.addEventListener('change', async function() {
-        const periodId = this.value;
-        let endpoint = 'tasks.php?action=list';
-        if (periodId !== 'all') {
-            endpoint += `&period_id=${periodId}`;
-        }
-        try {
-            const tasks = await fetchData(endpoint);
-            renderMajorTasks(tasks);
-        } catch (error) {
-            // Error handled by fetchData
-        }
-    });
 
-    // Hide Subtasks
-    document.getElementById('hide-subtasks-btn').addEventListener('click', () => {
-        subtasksDisplaySection.classList.add('hidden');
-        currentMajorTaskNameSpan.textContent = '';
-        addSubtaskBtnGlobal.dataset.majorTaskId = '';
-    });
-    
-    // Logout
-    document.getElementById('logout-btn').addEventListener('click', () => {
-        if (confirm('Are you sure you want to log out?')) {
-            window.location.href = 'logout.php';
+        function updatePeriodDropdowns() {
+            const periodSelects = [
+                document.getElementById('task-period'),
+                document.getElementById('filter-period')
+            ];
+            
+            periodSelects.forEach(select => {
+                if (!select) return;
+                
+                // Save current value
+                const currentValue = select.value;
+                
+                // Clear options except first one (which is "No Period" or "All Periods")
+                const firstOption = select.options[0];
+                select.innerHTML = '';
+                select.appendChild(firstOption);
+                
+                // Add period options
+                periodsData.forEach(period => {
+                    const option = document.createElement('option');
+                    option.value = period.id;
+                    option.textContent = period.name;
+                    select.appendChild(option);
+                });
+                
+                // Restore selected value if it still exists
+                if (currentValue) {
+                    select.value = currentValue;
+                }
+            });
         }
-    });
 
-    // --- Data Loading ---
-    async function loadSubtasksForMajorTask(majorTaskId, majorTaskName) {
-        currentMajorTaskNameSpan.textContent = htmlspecialchars(majorTaskName);
-        addSubtaskBtnGlobal.dataset.majorTaskId = majorTaskId; // Store for adding new subtasks
-        subtasksDisplaySection.classList.remove('hidden');
-        subtasksDisplaySection.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        try {
-            const subtasks = await fetchData(`subtasks.php?action=list&major_task_id=${majorTaskId}`);
-            renderSubtasks(subtasks);
-        } catch (error) {
-            // Error handled by fetchData, renderSubtasks will show "no subtasks"
-            renderSubtasks([]);
+        async function loadTasks() {
+            try {
+                const response = await fetchDataV2('api/tasks.php?action=list');
+                tasksData = response.data || [];
+                
+                // Render tasks list
+                renderTasks();
+                
+                // Update task progress on dashboard
+                renderTaskProgress();
+                
+                // Update upcoming deadlines
+                renderUpcomingDeadlines();
+                
+                // Update dashboard stats
+                updateDashboardStats();
+            } catch (error) {
+                console.error('Error loading tasks:', error);
+                document.getElementById('tasks-list-container').innerHTML = `
+                    <div class="error-container">
+                        <h3>Error Loading Tasks</h3>
+                        <p>${error.message}</p>
+                        <button onclick="loadTasks()" class="btn btn-primary">Try Again</button>
+                    </div>
+                `;
+            }
         }
-    }
 
-    async function loadAllData() {
-        try {
-            // Parallel fetching
-            const [periods, tasks] = await Promise.all([
-                fetchData('periods.php?action=list'),
-                fetchData('tasks.php?action=list') // Load all tasks initially
-            ]);
-            renderPeriods(periods);
-            renderMajorTasks(tasks); // This will render all tasks
-            // If a period filter was previously selected, re-apply it (optional)
-            // Or simply let the user re-select.
-        } catch (error) {
-            console.error("Failed to load initial dashboard data:", error);
-            // Specific error messages are shown by fetchData
+        async function loadAllData() {
+            try {
+                // Show loading indicators
+                document.getElementById('dashboard-content').innerHTML = `
+                    <div class="loading-container">
+                        <div class="loading-spinner"></div>
+                        <p>Loading dashboard data...</p>
+                    </div>
+                `;
+                
+                // Load all data in parallel
+                await Promise.all([
+                    loadUsers(),
+                    loadPeriods(),
+                    loadTasks()
+                ]);
+                
+                // Show dashboard content
+                showSection('dashboard-section');
+            } catch (error) {
+                console.error('Failed to load initial dashboard data:', error);
+                
+                document.getElementById('dashboard-content').innerHTML = `
+                    <div class="error-container">
+                        <h3>Error Loading Dashboard</h3>
+                        <p>${error.message}</p>
+                        <button onclick="loadAllData()" class="btn btn-primary">Try Again</button>
+                    </div>
+                `;
+            }
         }
-    }
 
-    // --- Initial Load ---
-    loadAllData();
-});
-</script>
+        // Rendering functions
+        function renderPeriods() {
+            const container = document.getElementById('periods-container');
+            
+            if (!periodsData || periodsData.length === 0) {
+                container.innerHTML = `
+                    <div class="col-12">
+                        <div class="welcome-container">
+                            <h3>No Periods Found</h3>
+                            <p>Get started by creating your first period to organize your tasks.</p>
+                            <button onclick="showAddPeriodModal()" class="btn btn-primary">Create Period</button>
+                        </div>
+                    </div>
+                `;
+                return;
+            }
+            
+            let html = '';
+            
+            periodsData.forEach(period => {
+                const statusClass = getStatusClass(period.status, 'period');
+                
+                html += `
+                    <div class="col-md-6 col-lg-4">
+                        <div class="card period-card" style="border-left: 5px solid ${period.color_code || '#cccccc'}">
+                            <div class="period-header">
+                                <h3>${escapeHtml(period.name)}</h3>
+                                <div class="period-actions">
+                                    <button class="btn btn-sm btn-outline-primary" onclick="editPeriod(${period.id})">
+                                        <i class="fas fa-edit"></i>
+                                    </button>
+                                    <button class="btn btn-sm btn-outline-danger" onclick="handleDelete('period', ${period.id})">
+                                        <i class="fas fa-trash"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="period-details">
+                                <p>${escapeHtml(period.description || 'No description')}</p>
+                                <div class="period-dates">
+                                    <span>Start: ${formatDate(period.start_date)}</span>
+                                    <span>End: ${formatDate(period.end_date)}</span>
+                                </div>
+                                <div class="d-flex justify-content-between align-items-center mt-2">
+                                    <span class="status-badge ${statusClass}">${period.status || 'Active'}</span>
+                                    <span>Tasks: ${period.task_count || 0}</span>
+                                </div>
+                            </div>
+                            <div class="period-footer">
+                                <button class="btn btn-sm btn-primary" onclick="filterTasksByPeriod(${period.id})">
+                                    <i class="fas fa-tasks me-1"></i> View Tasks
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            });
+            
+            container.innerHTML = `<div class="row">${html}</div>`;
+        }
 
+        function renderRecentPeriods() {
+            const container = document.getElementById('recent-periods-container');
+            
+            if (!periodsData || periodsData.length === 0) {
+                container.innerHTML = '<p class="text-muted">No periods found.</p>';
+                return;
+            }
+            
+            // Get 3 most recent periods
+            const recentPeriods = [...periodsData]
+                .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+                .slice(0, 3);
+            
+            let html = '<ul class="list-group">';
+            
+            recentPeriods.forEach(period => {
+                const statusClass = getStatusClass(period.status, 'period');
+                
+                html += `
+                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                        <div>
+                            <div class="d-flex align-items-center">
+                                <div style="width: 12px; height: 12px; background-color: ${period.color_code || '#cccccc'}; border-radius: 50%; margin-right: 10px;"></div>
+                                <strong>${escapeHtml(period.name)}</strong>
+                            </div>
+                            <small class="text-muted">Tasks: ${period.task_count || 0}</small>
+                        </div>
+                        <span class="status-badge ${statusClass}">${period.status || 'Active'}</span>
+                    </li>
+                `;
+            });
+            
+            html += '</ul>';
+            
+            if (recentPeriods.length < periodsData.length) {
+                html += `
+                    <div class="text-center mt-3">
+                        <a href="#periods-section" class="btn btn-sm btn-outline-primary view-all-link" data-section="periods-section">
+                            View All Periods
+                        </a>
+                    </div>
+                `;
+            }
+            
+            container.innerHTML = html;
+        }
+
+        function renderTasks(filters = {}) {
+            const container = document.getElementById('tasks-list-container');
+            
+            // Apply filters
+            let filteredTasks = [...tasksData];
+            
+            if (filters.periodId) {
+                filteredTasks = filteredTasks.filter(task => 
+                    task.period_id === filters.periodId || task.period_id === String(filters.periodId)
+                );
+            }
+            
+            if (filters.status) {
+                filteredTasks = filteredTasks.filter(task => task.status === filters.status);
+            }
+            
+            if (filters.priority) {
+                filteredTasks = filteredTasks.filter(task => task.priority === filters.priority);
+            }
+            
+            if (!filteredTasks || filteredTasks.length === 0) {
+                container.innerHTML = `
+                    <div class="card">
+                        <div class="card-body text-center">
+                            <p class="mb-3">No tasks found matching your criteria.</p>
+                            <button class="btn btn-primary" id="create-task-btn" onclick="showAddTaskModal()">
+                                <i class="fas fa-plus me-2"></i>Create Task
+                            </button>
+                        </div>
+                    </div>
+                `;
+                return;
+            }
+            
+            let html = '';
+            
+            filteredTasks.forEach(task => {
+                const statusClass = getStatusClass(task.status);
+                const priorityClass = getPriorityClass(task.priority);
+                const daysRemaining = task.deadline ? getDaysRemaining(task.deadline) : null;
+                
+                let deadlineHtml = '';
+                if (daysRemaining !== null) {
+                    if (daysRemaining < 0) {
+                        deadlineHtml = `<span class="text-danger"><i class="fas fa-exclamation-circle me-1"></i>Overdue by ${Math.abs(daysRemaining)} day${Math.abs(daysRemaining) !== 1 ? 's' : ''}</span>`;
+                    } else if (daysRemaining === 0) {
+                        deadlineHtml = '<span class="text-warning"><i class="fas fa-exclamation-triangle me-1"></i>Due today</span>';
+                    } else if (daysRemaining <= 3) {
+                        deadlineHtml = `<span class="text-warning"><i class="fas fa-clock me-1"></i>Due in ${daysRemaining} day${daysRemaining !== 1 ? 's' : ''}</span>`;
+                    } else {
+                        deadlineHtml = `<span><i class="far fa-calendar-alt me-1"></i>Due in ${daysRemaining} days</span>`;
+                    }
+                }
+                
+                html += `
+                    <div class="card task-card ${priorityClass} mb-3">
+                        <div class="task-header">
+                            <div>
+                                <h5 class="task-title">${escapeHtml(task.task_name)}</h5>
+                                <div class="task-metadata">
+                                    ${task.period_name ? `<span><i class="far fa-calendar-alt me-1"></i>${escapeHtml(task.period_name)}</span>` : ''}
+                                    <span class="status-badge ${statusClass}">${task.status}</span>
+                                    ${deadlineHtml ? `<span>${deadlineHtml}</span>` : ''}
+                                    ${task.assigned_to_name ? `<span><i class="far fa-user me-1"></i>${escapeHtml(task.assigned_to_name)}</span>` : ''}
+                                </div>
+                            </div>
+                            <div class="task-actions">
+                                <button class="btn btn-sm btn-outline-primary" onclick="editTask(${task.id})">
+                                    <i class="fas fa-edit"></i>
+                                </button>
+                                <button class="btn btn-sm btn-outline-danger" onclick="handleDelete('majortask', ${task.id})">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                            </div>
+                        </div>
+                        
+                        ${task.description ? `<div class="task-description">${escapeHtml(task.description)}</div>` : ''}
+                        
+                        <div class="mt-2">
+                            <div class="d-flex justify-content-between mb-1">
+                                <span>Progress: ${task.percent_complete}%</span>
+                                <span><i class="fas fa-list me-1"></i>Subtasks: ${task.subtask_count || 0}</span>
+                            </div>
+                            <div class="progress">
+                                <div class="progress-bar" role="progressbar" style="width: ${task.percent_complete}%" 
+                                     aria-valuenow="${task.percent_complete}" aria-valuemin="0" aria-valuemax="100"></div>
+                            </div>
+                        </div>
+                        
+                        <div class="mt-3">
+                            <button class="btn btn-sm btn-outline-primary" onclick="viewTaskDetails(${task.id})">
+                                <i class="fas fa-eye me-1"></i>View Details
+                            </button>
+                            <button class="btn btn-sm btn-outline-success ms-2" onclick="addSubtask(${task.id})">
+                                <i class="fas fa-plus me-1"></i>Add Subtask
+                            </button>
+                        </div>
+                    </div>
+                `;
+            });
+            
+            container.innerHTML = html;
+        }
+
+          function renderTaskProgress() {
+            const container = document.getElementById('tasks-progress-container');
+            
+            if (!tasksData || tasksData.length === 0) {
+                container.innerHTML = '<p class="text-muted">No tasks found.</p>';
+                return;
+            }
+            
+            // Group tasks by status
+            const tasksByStatus = {};
+            const statusOrder = ['To Do', 'In Progress', 'On Hold', 'Completed', 'Cancelled'];
+            
+            statusOrder.forEach(status => {
+                tasksByStatus[status] = tasksData.filter(task => task.status === status);
+            });
+            
+            // Calculate status distribution
+            const totalTasks = tasksData.length;
+            const statusCounts = {};
+            const statusPercentages = {};
+            
+            statusOrder.forEach(status => {
+                statusCounts[status] = tasksByStatus[status].length;
+                statusPercentages[status] = Math.round((statusCounts[status] / totalTasks) * 100) || 0;
+            });
+            
+            // Create progress bar
+            let progressBarHtml = '<div class="progress" style="height: 20px;">';
+            const statusColors = {
+                'To Do': '#3498db',
+                'In Progress': '#f39c12',
+                'On Hold': '#95a5a6',
+                'Completed': '#2ecc71',
+                'Cancelled': '#e74c3c'
+            };
+            
+            statusOrder.forEach(status => {
+                if (statusPercentages[status] > 0) {
+                    progressBarHtml += `
+                        <div class="progress-bar" role="progressbar" 
+                            style="width: ${statusPercentages[status]}%; background-color: ${statusColors[status]}" 
+                            aria-valuenow="${statusPercentages[status]}" aria-valuemin="0" aria-valuemax="100" 
+                            title="${status}: ${statusCounts[status]} tasks">
+                            ${statusPercentages[status] > 10 ? `${status} (${statusCounts[status]})` : ''}
+                        </div>
+                    `;
+                }
+            });
+            progressBarHtml += '</div>';
+            
+            // Create legend
+            let legendHtml = '<div class="d-flex flex-wrap mt-3 justify-content-between">';
+            statusOrder.forEach(status => {
+                legendHtml += `
+                    <div class="me-3 mb-2">
+                        <span class="badge" style="background-color: ${statusColors[status]};">&nbsp;</span>
+                        ${status}: ${statusCounts[status]} 
+                        (${statusPercentages[status]}%)
+                    </div>
+                `;
+            });
+            legendHtml += '</div>';
+            
+            // Create task completion rate
+            const completedTasks = statusCounts['Completed'] || 0;
+            const completionRate = Math.round((completedTasks / totalTasks) * 100) || 0;
+            
+            const completionHtml = `
+                <div class="mt-4">
+                    <h6>Overall Completion: ${completedTasks} of ${totalTasks} tasks (${completionRate}%)</h6>
+                    <div class="progress" style="height: 10px;">
+                        <div class="progress-bar bg-success" role="progressbar" style="width: ${completionRate}%" 
+                             aria-valuenow="${completionRate}" aria-valuemin="0" aria-valuemax="100"></div>
+                    </div>
+                </div>
+            `;
+            
+            container.innerHTML = progressBarHtml + legendHtml + completionHtml;
+        }
+
+        function renderUpcomingDeadlines() {
+            const container = document.getElementById('upcoming-deadlines-container');
+            
+            if (!tasksData || tasksData.length === 0) {
+                container.innerHTML = '<p class="text-muted">No tasks found.</p>';
+                return;
+            }
+            
+            // Get tasks with deadlines that are not completed or canceled
+            const tasksWithDeadlines = tasksData.filter(task => 
+                task.deadline && 
+                task.status !== 'Completed' && 
+                task.status !== 'Cancelled'
+            );
+            
+            if (tasksWithDeadlines.length === 0) {
+                container.innerHTML = '<p class="text-muted">No upcoming deadlines found.</p>';
+                return;
+            }
+            
+            // Sort by deadline
+            tasksWithDeadlines.sort((a, b) => new Date(a.deadline) - new Date(b.deadline));
+            
+            // Get the next 5 deadlines
+            const upcomingTasks = tasksWithDeadlines.slice(0, 5);
+            
+            let html = '<div class="table-responsive"><table class="table table-hover">';
+            html += `
+                <thead>
+                    <tr>
+                        <th>Task</th>
+                        <th>Deadline</th>
+                        <th>Status</th>
+                        <th>Priority</th>
+                        <th>Assignee</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+            `;
+            
+            upcomingTasks.forEach(task => {
+                const statusClass = getStatusClass(task.status);
+                const daysRemaining = getDaysRemaining(task.deadline);
+                let deadlineClass = '';
+                
+                if (daysRemaining !== null) {
+                    if (daysRemaining < 0) {
+                        deadlineClass = 'text-danger fw-bold';
+                    } else if (daysRemaining === 0) {
+                        deadlineClass = 'text-warning fw-bold';
+                    } else if (daysRemaining <= 3) {
+                        deadlineClass = 'text-warning';
+                    }
+                }
+                
+                html += `
+                    <tr>
+                        <td>${escapeHtml(task.task_name)}</td>
+                        <td class="${deadlineClass}">${formatDate(task.deadline)}</td>
+                        <td><span class="status-badge ${statusClass}">${task.status}</span></td>
+                        <td>${task.priority}</td>
+                        <td>${task.assigned_to_name || 'Unassigned'}</td>
+                        <td>
+                            <button class="btn btn-sm btn-outline-primary" onclick="viewTaskDetails(${task.id})">
+                                <i class="fas fa-eye"></i>
+                            </button>
+                        </td>
+                    </tr>
+                `;
+            });
+            
+            html += '</tbody></table></div>';
+            
+            container.innerHTML = html;
+        }
+
+        function updateDashboardStats() {
+            // Update period stats
+            const activePeriods = periodsData.filter(period => period.status === 'active' || period.status === 'Active').length;
+            document.getElementById('active-periods-count').textContent = activePeriods;
+            
+            // Update task stats
+            const openTasks = tasksData.filter(task => task.status !== 'Completed' && task.status !== 'Cancelled').length;
+            const completedTasks = tasksData.filter(task => task.status === 'Completed').length;
+            
+            document.getElementById('open-tasks-count').textContent = openTasks;
+            document.getElementById('completed-tasks-count').textContent = completedTasks;
+            
+            // Update deadline stats
+            const upcomingDeadlines = tasksData.filter(task => {
+                if (task.deadline && task.status !== 'Completed' && task.status !== 'Cancelled') {
+                    const daysRemaining = getDaysRemaining(task.deadline);
+                    return daysRemaining !== null && daysRemaining >= 0 && daysRemaining <= 7;
+                }
+                return false;
+            }).length;
+            
+            document.getElementById('upcoming-deadlines-count').textContent = upcomingDeadlines;
+        }
+
+        // Modal functions
+        function showAddPeriodModal() {
+            // Reset form
+            document.getElementById('period-form').reset();
+            document.getElementById('period-id').value = '';
+            document.getElementById('period-status').value = 'active';
+            document.getElementById('period-color').value = '#3498db';
+            
+            // Update modal title
+            document.getElementById('periodModalTitle').textContent = 'Add Period';
+            
+            // Show modal
+            const periodModal = new bootstrap.Modal(document.getElementById('periodModal'));
+            periodModal.show();
+        }
+
+        function editPeriod(periodId) {
+            const period = periodsData.find(p => p.id === periodId || p.id === String(periodId));
+            
+            if (!period) {
+                alert('Period not found');
+                return;
+            }
+            
+            // Fill the form
+            document.getElementById('period-id').value = period.id;
+            document.getElementById('period-name').value = period.name;
+            document.getElementById('period-description').value = period.description || '';
+            document.getElementById('period-start-date').value = period.start_date || '';
+            document.getElementById('period-end-date').value = period.end_date || '';
+            document.getElementById('period-status').value = period.status || 'active';
+            document.getElementById('period-color').value = period.color_code || '#3498db';
+            
+            // Update modal title
+            document.getElementById('periodModalTitle').textContent = 'Edit Period';
+            
+            // Show modal
+            const periodModal = new bootstrap.Modal(document.getElementById('periodModal'));
+            periodModal.show();
+        }
+
+        function showAddTaskModal() {
+            // Reset form
+            document.getElementById('task-form').reset();
+            document.getElementById('task-id').value = '';
+            document.getElementById('task-status').value = 'To Do';
+            document.getElementById('task-priority').value = 'Medium';
+            document.getElementById('task-urgency').value = 'Soon';
+            document.getElementById('task-importance').value = 'Important';
+            document.getElementById('task-progress').value = '0';
+            
+            // Update modal title
+            document.getElementById('taskModalTitle').textContent = 'Add Task';
+            
+            // Show modal
+            const taskModal = new bootstrap.Modal(document.getElementById('taskModal'));
+            taskModal.show();
+        }
+
+        function editTask(taskId) {
+            const task = tasksData.find(t => t.id === taskId || t.id === String(taskId));
+            
+            if (!task) {
+                alert('Task not found');
+                return;
+            }
+            
+            // Fill the form
+            document.getElementById('task-id').value = task.id;
+            document.getElementById('task-name').value = task.task_name;
+            document.getElementById('task-period').value = task.period_id || '';
+            document.getElementById('task-description').value = task.description || '';
+            document.getElementById('task-priority').value = task.priority || 'Medium';
+            document.getElementById('task-status').value = task.status || 'To Do';
+            document.getElementById('task-urgency').value = task.urgency || 'Soon';
+            document.getElementById('task-importance').value = task.importance || 'Important';
+            document.getElementById('task-deadline').value = task.deadline || '';
+            document.getElementById('task-assigned-to').value = task.assigned_to || '';
+            document.getElementById('task-progress').value = task.percent_complete || '0';
+            document.getElementById('task-working-with').value = task.working_with || '';
+            document.getElementById('task-estimated-hours').value = task.estimated_hours || '';
+            document.getElementById('task-actual-hours').value = task.actual_hours || '';
+            document.getElementById('task-notes').value = task.notes || '';
+            
+            // Update modal title
+            document.getElementById('taskModalTitle').textContent = 'Edit Task';
+            
+            // Show modal
+            const taskModal = new bootstrap.Modal(document.getElementById('taskModal'));
+            taskModal.show();
+        }
+
+        function addSubtask(taskId) {
+            // Reset form
+            document.getElementById('subtask-form').reset();
+            document.getElementById('subtask-id').value = '';
+            document.getElementById('subtask-major-task-id').value = taskId;
+            document.getElementById('subtask-status').value = 'To Do';
+            document.getElementById('subtask-progress').value = '0';
+            
+            // Update modal title
+            document.getElementById('subtaskModalTitle').textContent = 'Add Subtask';
+            
+            // Show modal
+            const subtaskModal = new bootstrap.Modal(document.getElementById('subtaskModal'));
+            subtaskModal.show();
+        }
+
+        function viewTaskDetails(taskId) {
+            // TODO: Implement task details view
+            alert('Task details view will be implemented in a future update.');
+        }
+
+        // Form submission handlers
+        document.getElementById('save-period-btn').addEventListener('click', async function() {
+            const form = document.getElementById('period-form');
+            
+            if (!form.checkValidity()) {
+                form.reportValidity();
+                return;
+            }
+            
+            const periodData = {
+                name: document.getElementById('period-name').value,
+                description: document.getElementById('period-description').value,
+                start_date: document.getElementById('period-start-date').value || null,
+                end_date: document.getElementById('period-end-date').value || null,
+                status: document.getElementById('period-status').value,
+                color_code: document.getElementById('period-color').value
+            };
+            
+            const periodId = document.getElementById('period-id').value;
+            let url = 'api/periods.php?action=';
+            let method = '';
+            
+            if (periodId) {
+                // Update existing period
+                url += 'update';
+                method = 'PUT';
+                periodData.id = periodId;
+            } else {
+                // Create new period
+                url += 'create';
+                method = 'POST';
+                
+                // Add created_by if current user is available
+                if (currentUser) {
+                    periodData.created_by = currentUser.id;
+                }
+            }
+            
+            try {
+                const response = await fetch(url, {
+                    method,
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(periodData)
+                });
+                
+                const data = await response.json();
+                
+                if (data.status === 'error') {
+                    throw new Error(data.message || 'Error saving period');
+                }
+                
+                // Close modal
+                bootstrap.Modal.getInstance(document.getElementById('periodModal')).hide();
+                
+                // Reload periods
+                loadPeriods();
+                
+                // Show success message
+                alert(periodId ? 'Period updated successfully' : 'Period created successfully');
+            } catch (error) {
+                alert('Error: ' + error.message);
+            }
+        });
+
+        document.getElementById('save-task-btn').addEventListener('click', async function() {
+            const form = document.getElementById('task-form');
+            
+            if (!form.checkValidity()) {
+                form.reportValidity();
+                return;
+            }
+            
+            const taskData = {
+                task_name: document.getElementById('task-name').value,
+                period_id: document.getElementById('task-period').value || null,
+                description: document.getElementById('task-description').value || null,
+                priority: document.getElementById('task-priority').value,
+                status: document.getElementById('task-status').value,
+                urgency: document.getElementById('task-urgency').value,
+                importance: document.getElementById('task-importance').value,
+                deadline: document.getElementById('task-deadline').value || null,
+                assigned_to: document.getElementById('task-assigned-to').value || null,
+                percent_complete: document.getElementById('task-progress').value,
+                working_with: document.getElementById('task-working-with').value || null,
+                estimated_hours: document.getElementById('task-estimated-hours').value || null,
+                actual_hours: document.getElementById('task-actual-hours').value || null,
+                notes: document.getElementById('task-notes').value || null
+            };
+            
+            const taskId = document.getElementById('task-id').value;
+            let url = 'api/tasks.php?action=';
+            let method = '';
+            
+            if (taskId) {
+                // Update existing task
+                url += 'update';
+                method = 'PUT';
+                taskData.id = taskId;
+            } else {
+                // Create new task
+                url += 'create';
+                method = 'POST';
+                
+                // Add created_by if current user is available
+                if (currentUser) {
+                    taskData.created_by = currentUser.id;
+                }
+            }
+            
+            try {
+                const response = await fetch(url, {
+                    method,
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(taskData)
+                });
+                
+                const data = await response.json();
+                
+                if (data.status === 'error') {
+                    throw new Error(data.message || 'Error saving task');
+                }
+                
+                // Close modal
+                bootstrap.Modal.getInstance(document.getElementById('taskModal')).hide();
+                
+                // Reload tasks
+                loadTasks();
+                
+                // Show success message
+                alert(taskId ? 'Task updated successfully' : 'Task created successfully');
+            } catch (error) {
+                alert('Error: ' + error.message);
+            }
+        });
+
+        document.getElementById('save-subtask-btn').addEventListener('click', async function() {
+            const form = document.getElementById('subtask-form');
+            
+            if (!form.checkValidity()) {
+                form.reportValidity();
+                return;
+            }
+            
+            const subtaskData = {
+                major_task_id: document.getElementById('subtask-major-task-id').value,
+                task_name: document.getElementById('subtask-name').value,
+                description: document.getElementById('subtask-description').value || null,
+                status: document.getElementById('subtask-status').value,
+                deadline: document.getElementById('subtask-deadline').value || null,
+                percent_complete: document.getElementById('subtask-progress').value
+            };
+            
+            const subtaskId = document.getElementById('subtask-id').value;
+            let url = 'api/subtasks.php?action=';
+            let method = '';
+            
+            if (subtaskId) {
+                // Update existing subtask
+                url += 'update';
+                method = 'PUT';
+                subtaskData.id = subtaskId;
+            } else {
+                // Create new subtask
+                url += 'create';
+                method = 'POST';
+                
+                // Add created_by if current user is available
+                if (currentUser) {
+                    subtaskData.created_by = currentUser.id;
+                }
+            }
+            
+            try {
+                const response = await fetch(url, {
+                    method,
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(subtaskData)
+                });
+                
+                const data = await response.json();
+                
+                if (data.status === 'error') {
+                    throw new Error(data.message || 'Error saving subtask');
+                }
+                
+                // Close modal
+                bootstrap.Modal.getInstance(document.getElementById('subtaskModal')).hide();
+                
+                // Reload tasks
+                loadTasks();
+                
+                // Show success message
+                alert(subtaskId ? 'Subtask updated successfully' : 'Subtask created successfully');
+            } catch (error) {
+                alert('Error: ' + error.message);
+            }
+        });
+
+        // Filter handling
+        document.getElementById('apply-filters-btn').addEventListener('click', function() {
+            const filters = {
+                periodId: document.getElementById('filter-period').value,
+                status: document.getElementById('filter-status').value,
+                priority: document.getElementById('filter-priority').value
+            };
+            
+            renderTasks(filters);
+        });
+
+        function filterTasksByPeriod(periodId) {
+            // Set the period filter value
+            document.getElementById('filter-period').value = periodId;
+            
+            // Clear other filters
+            document.getElementById('filter-status').value = '';
+            document.getElementById('filter-priority').value = '';
+            
+            // Switch to tasks section
+            showSection('tasks-section');
+            
+            // Apply the filter
+            renderTasks({ periodId });
+        }
+
+        // Navigation handling
+        function showSection(sectionId) {
+            // Hide all sections
+            document.querySelectorAll('.content-section').forEach(section => {
+                section.classList.remove('active');
+            });
+            
+            // Show selected section
+            document.getElementById(sectionId).classList.add('active');
+            
+            // Update active nav item
+            document.querySelectorAll('.sidebar .nav-link').forEach(navLink => {
+                navLink.classList.remove('active');
+                
+                if (navLink.getAttribute('data-section') === sectionId) {
+                    navLink.classList.add('active');
+                }
+            });
+        }
+
+        document.querySelectorAll('.sidebar .nav-link').forEach(navLink => {
+            navLink.addEventListener('click', function(e) {
+                e.preventDefault();
+                const sectionId = this.getAttribute('data-section');
+                showSection(sectionId);
+            });
+        });
+
+        document.querySelectorAll('.view-all-link').forEach(link => {
+            link.addEventListener('click', function(e) {
+                e.preventDefault();
+                const sectionId = this.getAttribute('data-section');
+                showSection(sectionId);
+            });
+        });
+
+        // Sidebar toggle
+        document.getElementById('sidebar-toggle').addEventListener('click', function() {
+            const sidebar = document.getElementById('sidebar');
+            const mainContent = document.getElementById('main-content');
+            
+            sidebar.classList.toggle('collapsed');
+            mainContent.classList.toggle('expanded');
+        });
+
+        // Utility functions
+        function escapeHtml(unsafe) {
+            if (!unsafe) return '';
+            return unsafe
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
+        }
+
+        // Initial load
+        document.addEventListener('DOMContentLoaded', function() {
+            // Load all data
+            loadAllData();
+            
+            // Set up refresh button for deadlines
+            document.getElementById('refresh-deadlines-btn').addEventListener('click', function() {
+                loadTasks();
+            });
+            
+            // Set up add buttons
+            document.getElementById('add-period-btn').addEventListener('click', showAddPeriodModal);
+            document.getElementById('add-task-btn').addEventListener('click', showAddTaskModal);
+        });
+    </script>
 </body>
 </html>
